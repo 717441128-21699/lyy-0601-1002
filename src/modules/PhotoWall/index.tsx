@@ -22,7 +22,7 @@ import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { useInspectionStore } from '@/store/useInspectionStore';
 import { useTheme } from '@/hooks/useTheme';
-import { getHazardLevelLabel, getHazardTypeLabel } from '@/utils/suggestions';
+import { getHazardLevelLabel, getHazardTypeLabel, filterPhotosByHazardFilters, getHazardPhotoIds, isPhotoLinkedToHazard } from '@/utils/suggestions';
 import { convertFileToBase64, createPlaceholderImage } from '@/utils/placeholderImages';
 import type { Photo, PhotoCategory, HazardLevel } from '@/types';
 import { mockAreas, mockInspectorNames } from '@/mock/data';
@@ -151,15 +151,12 @@ export const PhotoWallModule: React.FC = () => {
         const matchReporter = filters.reporter === 'all' || h.reporter === filters.reporter;
         return matchArea && matchLevel && matchReporter;
       });
-      const filteredPhotoIds = new Set(filteredHazards.flatMap(h => h.photos));
-      const filteredPhotos = photos.filter(p => {
-        const matchAssociation = filters.photoAssociation === 'all'
-          ? true
-          : filters.photoAssociation === 'linked'
-            ? filteredPhotoIds.has(p.id)
-            : !filteredPhotoIds.has(p.id);
-        const matchArea = filters.area === 'all' || p.location === filters.area;
-        return matchAssociation && matchArea;
+      const filteredPhotos = filterPhotosByHazardFilters(photos, hazards, filters);
+      const filteredHazardPhotoIds = getHazardPhotoIds(filteredHazards);
+      const finalPhotos = filteredPhotos.filter(p => {
+        if (filters.photoAssociation === 'all') return true;
+        const isLinked = isPhotoLinkedToHazard(p, filteredHazards) || filteredHazardPhotoIds.has(p.id);
+        return filters.photoAssociation === 'linked' ? isLinked : !isLinked;
       });
       const filteredInspectors = inspectors.filter(i => {
         if (filters.reporter === 'all') return true;
@@ -177,7 +174,7 @@ export const PhotoWallModule: React.FC = () => {
           valves: filteredValves,
           routes: filteredRoutes,
           hazards: filteredHazards,
-          photos: filteredPhotos,
+          photos: finalPhotos,
           inspectors: filteredInspectors,
         },
         statistics: {
@@ -185,7 +182,7 @@ export const PhotoWallModule: React.FC = () => {
           inspectedPipes: filteredPipes.filter(p => p.status === 'inspected').length,
           totalHazards: filteredHazards.length,
           resolvedHazards: filteredHazards.filter(h => h.status === 'resolved').length,
-          totalPhotos: filteredPhotos.length,
+          totalPhotos: finalPhotos.length,
           inspectionRate: filteredPipes.length > 0
             ? ((filteredPipes.filter(p => p.status === 'inspected').length / filteredPipes.length) * 100).toFixed(1) + '%'
             : '0%',
@@ -943,21 +940,21 @@ export const PhotoWallModule: React.FC = () => {
               </div>
               <div>
                 <span className="opacity-60">照片：</span>
-                <span>{photos.filter(p => {
-                  const filteredHazardIds = new Set(hazards.filter(h => {
+                <span>{(() => {
+                  const filteredHazards = hazards.filter(h => {
                     const matchArea = exportFilters.area === 'all' || h.location.includes(exportFilters.area);
                     const matchLevel = exportFilters.hazardLevel === 'all' || h.level === exportFilters.hazardLevel;
                     const matchReporter = exportFilters.reporter === 'all' || h.reporter === exportFilters.reporter;
                     return matchArea && matchLevel && matchReporter;
-                  }).flatMap(h => h.photos));
-                  const matchAssociation = exportFilters.photoAssociation === 'all'
-                    ? true
-                    : exportFilters.photoAssociation === 'linked'
-                      ? filteredHazardIds.has(p.id)
-                      : !filteredHazardIds.has(p.id);
-                  const matchArea = exportFilters.area === 'all' || p.location === exportFilters.area;
-                  return matchAssociation && matchArea;
-                }).length}</span>
+                  });
+                  const filteredHazardPhotoIds = getHazardPhotoIds(filteredHazards);
+                  const filteredPhotos = filterPhotosByHazardFilters(photos, hazards, exportFilters);
+                  return filteredPhotos.filter(p => {
+                    if (exportFilters.photoAssociation === 'all') return true;
+                    const isLinked = isPhotoLinkedToHazard(p, filteredHazards) || filteredHazardPhotoIds.has(p.id);
+                    return exportFilters.photoAssociation === 'linked' ? isLinked : !isLinked;
+                  }).length;
+                })()}</span>
               </div>
             </div>
           </div>

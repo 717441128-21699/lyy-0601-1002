@@ -21,6 +21,11 @@ import {
   History,
   RotateCcw,
   Filter,
+  GitCompare,
+  X,
+  Plus,
+  Minus,
+  ArrowRight,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -29,6 +34,7 @@ import { useInspectionStore } from '@/store/useInspectionStore';
 import { useTheme } from '@/hooks/useTheme';
 import { themes } from '@/styles/themes';
 import { exportElementAsImage, exportProjectToJson, importProjectFromJson } from '@/utils/exporters';
+import { getHazardLevelLabel } from '@/utils/suggestions';
 import type { ThemeType, SavedProject } from '@/types';
 
 export const SettingsModule: React.FC = () => {
@@ -53,14 +59,31 @@ export const SettingsModule: React.FC = () => {
     loadFromImportHistory,
     clearImportHistory,
   } = useInspectionStore();
-  const { currentTheme, switchTheme, themeColors } = useTheme();
 
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [showLoadModal, setShowLoadModal] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const { themeColors, currentTheme, switchTheme } = useTheme();
+
   const [projectName, setProjectName] = useState('');
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectFileInputRef = useRef<HTMLInputElement>(null);
+  const [compareSelection, setCompareSelection] = useState<Set<string>>(new Set());
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [compareResult, setCompareResult] = useState<null | {
+    item1: typeof importHistory[0];
+    item2: typeof importHistory[0];
+    differences: {
+      pipes: { item1: number; item2: number; diff: number };
+      hazards: { item1: number; item2: number; diff: number };
+      photos: { item1: number; item2: number; diff: number };
+      routes: { item1: number; item2: number; diff: number };
+      distance: { item1: number; item2: number; diff: number };
+      addedHazards: typeof hazards;
+      removedHazards: typeof hazards;
+    };
+  }>(null);
 
   const themeList: { key: ThemeType; name: string; icon: React.ReactNode }[] = [
     { key: 'dark', name: '深色主题', icon: <Moon className="w-5 h-5" /> },
@@ -123,6 +146,81 @@ export const SettingsModule: React.FC = () => {
       handleImportProject(file);
       e.target.value = '';
     }
+  };
+
+  const handleCompareSelection = (id: string) => {
+    const newSelection = new Set(compareSelection);
+    if (newSelection.has(id)) {
+      newSelection.delete(id);
+    } else if (newSelection.size < 2) {
+      newSelection.add(id);
+    } else {
+      alert('最多只能选择两个历史包进行对比');
+      return;
+    }
+    setCompareSelection(newSelection);
+  };
+
+  const handleCompare = () => {
+    if (compareSelection.size !== 2) {
+      alert('请选择两个历史包进行对比');
+      return;
+    }
+    const ids = Array.from(compareSelection);
+    const item1 = importHistory.find(h => h.id === ids[0])!;
+    const item2 = importHistory.find(h => h.id === ids[1])!;
+
+    const data1 = item1.project.data;
+    const data2 = item2.project.data;
+
+    const hazardIds1 = new Set(data1.hazards?.map(h => h.id) || []);
+    const hazardIds2 = new Set(data2.hazards?.map(h => h.id) || []);
+
+    const addedHazards = (data2.hazards || []).filter(h => !hazardIds1.has(h.id));
+    const removedHazards = (data1.hazards || []).filter(h => !hazardIds2.has(h.id));
+
+    const distance1 = (data1.routes || []).reduce((sum, r) => sum + (r.distance || 0), 0);
+    const distance2 = (data2.routes || []).reduce((sum, r) => sum + (r.distance || 0), 0);
+
+    setCompareResult({
+      item1,
+      item2,
+      differences: {
+        pipes: {
+          item1: data1.pipes?.length || 0,
+          item2: data2.pipes?.length || 0,
+          diff: (data2.pipes?.length || 0) - (data1.pipes?.length || 0),
+        },
+        hazards: {
+          item1: data1.hazards?.length || 0,
+          item2: data2.hazards?.length || 0,
+          diff: (data2.hazards?.length || 0) - (data1.hazards?.length || 0),
+        },
+        photos: {
+          item1: data1.photos?.length || 0,
+          item2: data2.photos?.length || 0,
+          diff: (data2.photos?.length || 0) - (data1.photos?.length || 0),
+        },
+        routes: {
+          item1: data1.routes?.length || 0,
+          item2: data2.routes?.length || 0,
+          diff: (data2.routes?.length || 0) - (data1.routes?.length || 0),
+        },
+        distance: {
+          item1: distance1,
+          item2: distance2,
+          diff: distance2 - distance1,
+        },
+        addedHazards,
+        removedHazards,
+      },
+    });
+
+    setShowCompareModal(true);
+  };
+
+  const clearCompareSelection = () => {
+    setCompareSelection(new Set());
   };
 
   const handleExportProject = (project: SavedProject) => {
@@ -364,12 +462,26 @@ export const SettingsModule: React.FC = () => {
               <History className="w-5 h-5" />
               最近导入记录
             </div>
-            {importHistory.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={clearImportHistory}>
-                <Trash2 className="w-4 h-4" />
-                清空历史
+            <div className="flex items-center gap-2">
+              {compareSelection.size === 2 && (
+                <Button variant="primary" size="sm" onClick={handleCompare}>
+                <GitCompare className="w-4 h-4" />
+                对比选中
               </Button>
             )}
+              {compareSelection.size > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearCompareSelection}>
+                  <X className="w-4 h-4" />
+                  取消选择 ({compareSelection.size}/2)
+                </Button>
+              )}
+              {importHistory.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearImportHistory}>
+                  <Trash2 className="w-4 h-4" />
+                  清空历史
+                </Button>
+              )}
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -384,8 +496,18 @@ export const SettingsModule: React.FC = () => {
               {importHistory.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-bg-secondary transition-colors border border-border-primary"
+                  className={`flex items-center justify-between p-3 rounded-lg hover:bg-bg-secondary transition-colors border-2 ${
+                    compareSelection.has(item.id) ? 'border-primary' : 'border-border-primary'
+                  }`}
                 >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={compareSelection.has(item.id)}
+                      onChange={() => handleCompareSelection(item.id)}
+                      className="w-5 h-5 rounded border-border-primary text-primary focus:ring-primary"
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <FileJson className="w-4 h-4 text-primary" />
@@ -613,6 +735,188 @@ export const SettingsModule: React.FC = () => {
             }}
           >
             确认清空
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={showCompareModal}
+        onClose={() => setShowCompareModal(false)}
+        title="片区对比分析"
+        size="xl"
+      >
+        {compareResult && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-center gap-6 p-4 rounded-xl bg-bg-secondary">
+              <div className="text-center flex-1">
+                <p className="font-medium text-lg">{compareResult.item1.name}</p>
+                <p className="text-sm opacity-60">{new Date(compareResult.item1.importedAt).toLocaleDateString('zh-CN')}</p>
+              </div>
+              <div className="text-2xl font-bold opacity-50">VS</div>
+              <div className="text-center flex-1">
+                <p className="font-medium text-lg">{compareResult.item2.name}</p>
+                <p className="text-sm opacity-60">{new Date(compareResult.item2.importedAt).toLocaleDateString('zh-CN')}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-5 gap-3">
+              <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                <p className="text-sm opacity-60 mb-2">管段数</p>
+                <div className="flex items-center justify-center gap-1 text-2xl font-bold">
+                  <span>{compareResult.differences.pipes.item1}</span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                  <span>{compareResult.differences.pipes.item2}</span>
+                </div>
+                <p className={`text-sm mt-1 ${compareResult.differences.pipes.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {compareResult.differences.pipes.diff >= 0 ? (
+                    <><Plus className="w-3 h-3 inline" /> {compareResult.differences.pipes.diff}</>
+                  ) : (
+                    <><Minus className="w-3 h-3 inline" /> {Math.abs(compareResult.differences.pipes.diff)}</>
+                  )}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                <p className="text-sm opacity-60 mb-2">隐患数</p>
+                <div className="flex items-center justify-center gap-1 text-2xl font-bold">
+                  <span>{compareResult.differences.hazards.item1}</span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                  <span>{compareResult.differences.hazards.item2}</span>
+                </div>
+                <p className={`text-sm mt-1 ${compareResult.differences.hazards.diff >= 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  {compareResult.differences.hazards.diff >= 0 ? (
+                    <><Plus className="w-3 h-3 inline" /> {compareResult.differences.hazards.diff}</>
+                  ) : (
+                    <><Minus className="w-3 h-3 inline" /> {Math.abs(compareResult.differences.hazards.diff)}</>
+                  )}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                <p className="text-sm opacity-60 mb-2">照片数</p>
+                <div className="flex items-center justify-center gap-1 text-2xl font-bold">
+                  <span>{compareResult.differences.photos.item1}</span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                  <span>{compareResult.differences.photos.item2}</span>
+                </div>
+                <p className={`text-sm mt-1 ${compareResult.differences.photos.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {compareResult.differences.photos.diff >= 0 ? (
+                    <><Plus className="w-3 h-3 inline" /> {compareResult.differences.photos.diff}</>
+                  ) : (
+                    <><Minus className="w-3 h-3 inline" /> {Math.abs(compareResult.differences.photos.diff)}</>
+                  )}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                <p className="text-sm opacity-60 mb-2">路线数</p>
+                <div className="flex items-center justify-center gap-1 text-2xl font-bold">
+                  <span>{compareResult.differences.routes.item1}</span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                  <span>{compareResult.differences.routes.item2}</span>
+                </div>
+                <p className={`text-sm mt-1 ${compareResult.differences.routes.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {compareResult.differences.routes.diff >= 0 ? (
+                    <><Plus className="w-3 h-3 inline" /> {compareResult.differences.routes.diff}</>
+                  ) : (
+                    <><Minus className="w-3 h-3 inline" /> {Math.abs(compareResult.differences.routes.diff)}</>
+                  )}
+                </p>
+              </div>
+              <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                <p className="text-sm opacity-60 mb-2">总里程</p>
+                <div className="flex items-center justify-center gap-1 text-2xl font-bold">
+                  <span>{compareResult.differences.distance.item1.toFixed(1)}</span>
+                  <ArrowRight className="w-4 h-4 opacity-50" />
+                  <span>{compareResult.differences.distance.item2.toFixed(1)}</span>
+                </div>
+                <p className={`text-sm mt-1 ${compareResult.differences.distance.diff >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {compareResult.differences.distance.diff >= 0 ? (
+                    <><Plus className="w-3 h-3 inline" /> {compareResult.differences.distance.diff.toFixed(1)} km</>
+                  ) : (
+                    <><Minus className="w-3 h-3 inline" /> {Math.abs(compareResult.differences.distance.diff).toFixed(1)} km</>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {compareResult.differences.addedHazards.length > 0 && (
+              <div className="p-4 rounded-xl bg-bg-secondary">
+                <h3 className="font-medium mb-3 flex items-center gap-2 text-green-500">
+                  <Plus className="w-5 h-5" />
+                  新增隐患 ({compareResult.differences.addedHazards.length}处)
+                </h3>
+                <div className="space-y-2 max-h-60 overflow-auto">
+                  {compareResult.differences.addedHazards.map((hazard) => (
+                    <div key={hazard.id} className="flex items-center justify-between p-3 rounded-lg bg-bg-primary border border-border-primary">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: config.legend[`${hazard.level}Color` as keyof typeof config.legend] }}
+                        />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{hazard.location}</p>
+                          <p className="text-sm opacity-60 truncate">{hazard.description}</p>
+                        </div>
+                      </div>
+                      <span
+                        className="text-sm px-2 py-1 rounded-lg font-medium flex-shrink-0 ml-2"
+                        style={{
+                          backgroundColor: `${config.legend[`${hazard.level}Color` as keyof typeof config.legend]}20`,
+                          color: config.legend[`${hazard.level}Color` as keyof typeof config.legend],
+                        }}
+                      >
+                        {getHazardLevelLabel(hazard.level)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {compareResult.differences.removedHazards.length > 0 && (
+              <div className="p-4 rounded-xl bg-bg-secondary">
+                <h3 className="font-medium mb-3 flex items-center gap-2 text-red-500">
+                  <Minus className="w-5 h-5" />
+                  减少/已解决隐患 ({compareResult.differences.removedHazards.length}处)
+                </h3>
+                <div className="space-y-2 max-h-60 overflow-auto">
+                  {compareResult.differences.removedHazards.map((hazard) => (
+                    <div key={hazard.id} className="flex items-center justify-between p-3 rounded-lg bg-bg-primary border border-border-primary opacity-70">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: config.legend[`${hazard.level}Color` as keyof typeof config.legend] }}
+                        />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{hazard.location}</p>
+                          <p className="text-sm opacity-60 truncate">{hazard.description}</p>
+                        </div>
+                      </div>
+                      <span
+                        className="text-sm px-2 py-1 rounded-lg font-medium flex-shrink-0 ml-2"
+                        style={{
+                          backgroundColor: `${config.legend[`${hazard.level}Color` as keyof typeof config.legend]}20`,
+                          color: config.legend[`${hazard.level}Color` as keyof typeof config.legend],
+                        }}
+                      >
+                        {getHazardLevelLabel(hazard.level)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {compareResult.differences.addedHazards.length === 0 && compareResult.differences.removedHazards.length === 0 && (
+              <div className="p-8 rounded-xl bg-bg-secondary text-center opacity-50">
+                <Check className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                <p>两个片区的隐患完全一致</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border-primary">
+          <Button variant="ghost" onClick={() => setShowCompareModal(false)}>
+            关闭
           </Button>
         </div>
       </Modal>

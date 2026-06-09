@@ -1,4 +1,4 @@
-import type { HazardType, HazardLevel } from '@/types';
+import type { HazardType, HazardLevel, Hazard, Photo } from '@/types';
 
 const suggestionTemplates: Record<HazardType, Record<HazardLevel, string>> = {
   leak: {
@@ -91,4 +91,64 @@ export const getValveStatusLabel = (status: string): string => {
     fault: '故障',
   };
   return labels[status] || status;
+};
+
+export const isPhotoLinkedToHazard = (photo: Photo, hazards: Hazard[]): boolean => {
+  if (photo.hazardId) {
+    return hazards.some(h => h.id === photo.hazardId);
+  }
+  return hazards.some(h => h.photos.includes(photo.id));
+};
+
+export const getPhotoLinkedHazard = (photo: Photo, hazards: Hazard[]): Hazard | undefined => {
+  if (photo.hazardId) {
+    return hazards.find(h => h.id === photo.hazardId);
+  }
+  return hazards.find(h => h.photos.includes(photo.id));
+};
+
+export const getHazardPhotoIds = (hazards: Hazard[]): Set<string> => {
+  const photoIds = new Set<string>();
+  hazards.forEach(h => {
+    h.photos.forEach(id => photoIds.add(id));
+  });
+  hazards.forEach(h => {
+    if (h.id) {
+      // 也检查通过hazardId关联的照片
+    }
+  });
+  return photoIds;
+};
+
+export const filterPhotosByHazardFilters = (
+  photos: Photo[],
+  hazards: Hazard[],
+  filters: {
+    area?: string | 'all';
+    hazardLevel?: HazardLevel | 'all';
+    reporter?: string | 'all';
+    photoAssociation?: 'all' | 'linked' | 'none';
+  }
+): Photo[] => {
+  const filteredHazards = hazards.filter(h => {
+    const matchArea = !filters.area || filters.area === 'all' || h.location.includes(filters.area);
+    const matchLevel = !filters.hazardLevel || filters.hazardLevel === 'all' || h.level === filters.hazardLevel;
+    const matchReporter = !filters.reporter || filters.reporter === 'all' || h.reporter === filters.reporter;
+    return matchArea && matchLevel && matchReporter;
+  });
+
+  const filteredHazardPhotoIds = getHazardPhotoIds(filteredHazards);
+
+  return photos.filter(p => {
+    const matchArea = !filters.area || filters.area === 'all' || p.location === filters.area;
+    const isLinked = isPhotoLinkedToHazard(p, filteredHazards) || filteredHazardPhotoIds.has(p.id);
+    
+    const matchAssociation = filters.photoAssociation === 'all'
+      ? true
+      : filters.photoAssociation === 'linked'
+        ? isLinked
+        : !isLinked;
+    
+    return matchArea && matchAssociation;
+  });
 };

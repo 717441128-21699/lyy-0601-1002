@@ -20,6 +20,13 @@ import {
   Image,
   MapPin,
   FileText,
+  Maximize,
+  Minimize,
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  Pause,
+  Target,
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
@@ -28,9 +35,9 @@ import { Modal } from '@/components/Modal';
 import { useStatistics, StatisticsFilters } from '@/hooks/useStatistics';
 import { useTheme } from '@/hooks/useTheme';
 import { useInspectionStore } from '@/store/useInspectionStore';
-import { getHazardTypeLabel, getHazardLevelLabel } from '@/utils/suggestions';
+import { getHazardTypeLabel, getHazardLevelLabel, filterPhotosByHazardFilters, isPhotoLinkedToHazard, getPhotoLinkedHazard } from '@/utils/suggestions';
 import { exportElementAsImage } from '@/utils/exporters';
-import type { HazardLevel } from '@/types';
+import type { HazardLevel, Hazard } from '@/types';
 
 export const StatisticsModule: React.FC = () => {
   const { themeColors, currentTheme } = useTheme();
@@ -42,6 +49,11 @@ export const StatisticsModule: React.FC = () => {
   const [showReportView, setShowReportView] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [currentSection, setCurrentSection] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
 
   const filters = activeFilters;
   const setFilters = (newFilters: Partial<StatisticsFilters>) => {
@@ -78,12 +90,24 @@ export const StatisticsModule: React.FC = () => {
     }
   };
 
+  const filteredHazards = useMemo(() => {
+    return hazards.filter(h => {
+      const matchArea = filters.area === 'all' || h.location.includes(filters.area);
+      const matchLevel = filters.hazardLevel === 'all' || h.level === filters.hazardLevel;
+      const matchReporter = filters.reporter === 'all' || h.reporter === filters.reporter;
+      return matchArea && matchLevel && matchReporter;
+    });
+  }, [hazards, filters]);
+
   const reportPhotos = useMemo(() => {
-    const hazardPhotoIds = new Set(stats.hazardByType ? [] : []);
     return photos
-      .filter(p => p.hazardId)
+      .filter(p => {
+        const matchArea = filters.area === 'all' || p.location === filters.area;
+        const isLinked = isPhotoLinkedToHazard(p, filteredHazards);
+        return matchArea && isLinked;
+      })
       .slice(0, 6);
-  }, [photos]);
+  }, [photos, filters, filteredHazards]);
 
   const textColor = currentTheme === 'light' ? '#1F2937' : '#F3F4F6';
   const axisLineColor = currentTheme === 'light' ? '#E5E7EB' : '#374151';
@@ -109,6 +133,97 @@ export const StatisticsModule: React.FC = () => {
         : '0',
     };
   }, [stats.monthlyComparison]);
+
+  const presentationSections = useMemo(() => [
+    {
+      id: 'metrics',
+      title: '关键指标',
+      icon: <BarChart3 className="w-5 h-5" />,
+      narration: `各位领导好，今天汇报的是${filters.area === 'all' ? '全区域' : filters.area}的巡检情况。截至目前，我们已完成巡检管段${stats.inspectedPipes}条，巡检率达到${inspectionRate}%。发现隐患${stats.totalHazards}处，其中已解决${stats.resolvedHazards}处，解决率${resolveRate}%。本月累计巡检${stats.inspectionCount}次，总里程${stats.totalDistance.toFixed(1)}公里。`,
+      keyHazards: () => filteredHazards
+        .filter(h => h.level === 'critical' || h.level === 'severe')
+        .slice(0, 3),
+    },
+    {
+      id: 'distribution',
+      title: '隐患分布',
+      icon: <PieChart className="w-5 h-5" />,
+      narration: `从隐患类型来看，${Object.entries(stats.hazardByType).sort((a, b) => b[1] - a[1]).map(([type, count], idx) => `${idx === 0 ? '主要' : '其次'}是${getHazardTypeLabel(type as any)}，共${count}处`).join('，')}。按等级划分，${Object.entries(stats.hazardByLevel).sort((a, b) => b[1] - a[1]).map(([level, count]) => `${getHazardLevelLabel(level as any)}${count}处`).join('，')}。我们重点关注严重及以上等级的隐患，确保及时处理。`,
+      keyHazards: () => filteredHazards
+        .filter(h => h.status !== 'resolved')
+        .slice(0, 3),
+    },
+    {
+      id: 'trend',
+      title: '趋势分析',
+      icon: <TrendingUp className="w-5 h-5" />,
+      narration: `从近30天趋势来看，巡检次数保持稳定，隐患发现数量${stats.trendData.slice(-7).reduce((sum, d) => sum + d.hazards, 0) > stats.trendData.slice(-14, -7).reduce((sum, d) => sum + d.hazards, 0) ? '有所上升，说明巡检质量在提高' : '稳中有降，说明前期整改效果明显'}。本月较上月，巡检次数${monthlyDiff.inspections >= 0 ? '增加' : '减少'}${Math.abs(monthlyDiff.inspections)}次，隐患数量${monthlyDiff.hazards >= 0 ? '增加' : '减少'}${Math.abs(monthlyDiff.hazards)}处。`,
+      keyHazards: () => filteredHazards
+        .filter(h => {
+          const date = new Date(h.reportedAt);
+          const daysAgo = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+          return daysAgo <= 7;
+        })
+        .slice(0, 3),
+    },
+    {
+      id: 'photos',
+      title: '现场照片',
+      icon: <Image className="w-5 h-5" />,
+      narration: `以上是现场拍摄的典型照片，涵盖了${reportPhotos.length}处隐患点。每一张照片都关联了具体的隐患信息，包括位置、类型和等级。现场照片为我们的隐患诊断和整改方案制定提供了直观的依据。接下来我们将重点处理照片中显示的严重隐患，确保管网安全运行。`,
+      keyHazards: () => reportPhotos
+        .map(p => getPhotoLinkedHazard(p, filteredHazards))
+        .filter(Boolean)
+        .slice(0, 3) as Hazard[],
+    },
+  ], [stats, filteredHazards, reportPhotos, filters, inspectionRate, resolveRate, monthlyDiff]);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement && reportRef.current) {
+      reportRef.current.requestFullscreen();
+      setIsFullscreen(true);
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  const nextSection = () => {
+    setCurrentSection((prev) => (prev + 1) % presentationSections.length);
+  };
+
+  const prevSection = () => {
+    setCurrentSection((prev) => (prev - 1 + presentationSections.length) % presentationSections.length);
+  };
+
+  const toggleAutoPlay = () => {
+    if (autoPlayRef.current) {
+      clearInterval(autoPlayRef.current);
+      autoPlayRef.current = null;
+      setAutoPlay(false);
+    } else {
+      autoPlayRef.current = setInterval(() => {
+        setCurrentSection((prev) => (prev + 1) % presentationSections.length);
+      }, 8000);
+      setAutoPlay(true);
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (autoPlayRef.current) {
+        clearInterval(autoPlayRef.current);
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   const workloadChartOption = useMemo(() => ({
     tooltip: {
@@ -749,20 +864,297 @@ export const StatisticsModule: React.FC = () => {
       </Card>
 
       <Modal isOpen={showReportView} onClose={() => setShowReportView(false)} title="巡检汇报视图" size="xl">
-        <div id="report-view-content" ref={reportRef} className="space-y-4">
-          <div className="text-center pb-4 border-b border-border-primary">
-            <h1 className="text-2xl font-bold">智慧水务巡检汇报</h1>
-            <p className="text-sm opacity-60 mt-1">
-              {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
-              {hasActiveFilters && (
-                <span className="ml-2 px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs">
-                  筛选: {filters.area !== 'all' && filters.area + ' '}
-                  {filters.hazardLevel !== 'all' && getHazardLevelLabel(filters.hazardLevel as HazardLevel) + ' '}
-                  {filters.reporter !== 'all' && filters.reporter}
-                </span>
-              )}
-            </p>
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-border-primary">
+          <div className="flex items-center gap-2">
+            <Button
+              variant={!isPresentationMode ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setIsPresentationMode(false)}
+            >
+              <BarChart3 className="w-4 h-4" />
+              标准视图
+            </Button>
+            <Button
+              variant={isPresentationMode ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => setIsPresentationMode(true)}
+            >
+              <Presentation className="w-4 h-4" />
+              讲解模式
+            </Button>
           </div>
+          <div className="flex items-center gap-2">
+            {isPresentationMode && (
+              <>
+                <Button variant="ghost" size="sm" onClick={toggleAutoPlay}>
+                  {autoPlay ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  {autoPlay ? '暂停' : '自动播放'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={toggleFullscreen}>
+                  {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                  {isFullscreen ? '退出全屏' : '全屏'}
+                </Button>
+              </>
+            )}
+            <Button variant="ghost" size="sm" onClick={handleExportReport} disabled={isExporting}>
+              <Download className="w-4 h-4" />
+              {isExporting ? '导出中...' : '导出图片'}
+            </Button>
+          </div>
+        </div>
+
+        {isPresentationMode && (
+          <div className="flex items-center justify-center gap-2 mb-4 pb-3 border-b border-border-primary">
+            <Button variant="ghost" size="sm" onClick={prevSection}>
+              <ChevronLeft className="w-4 h-4" />
+              上一段
+            </Button>
+            {presentationSections.map((section, idx) => (
+              <Button
+                key={section.id}
+                variant={currentSection === idx ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => setCurrentSection(idx)}
+                className="min-w-[100px]"
+              >
+                {section.icon}
+                {section.title}
+              </Button>
+            ))}
+            <Button variant="ghost" size="sm" onClick={nextSection}>
+              下一段
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        <div id="report-view-content" ref={reportRef} className="space-y-4">
+          {isPresentationMode ? (
+            <div className="space-y-6">
+              <div className="text-center pb-4 border-b border-border-primary">
+                <h1 className="text-3xl font-bold mb-3">{presentationSections[currentSection].title}</h1>
+                <div className="text-lg leading-relaxed max-w-4xl mx-auto p-4 rounded-xl bg-bg-secondary border border-border-primary">
+                  {presentationSections[currentSection].narration}
+                </div>
+              </div>
+
+              {currentSection === 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm opacity-60">管段总数</span>
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${themeColors.primary}20` }}>
+                        <Ruler className="w-5 h-5" style={{ color: themeColors.primary }} />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-bold">{stats.totalPipes}</p>
+                    <p className="text-sm opacity-60 mt-2">已巡 {stats.inspectedPipes} ({inspectionRate}%)</p>
+                  </div>
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm opacity-60">隐患总数</span>
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${config.legend.severeColor}20` }}>
+                        <AlertTriangle className="w-5 h-5" style={{ color: config.legend.severeColor }} />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-bold">{stats.totalHazards}</p>
+                    <p className="text-sm opacity-60 mt-2">已解决 {stats.resolvedHazards} ({resolveRate}%)</p>
+                  </div>
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm opacity-60">巡检次数</span>
+                      <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                        <BarChart3 className="w-5 h-5 text-green-500" />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-bold">{stats.inspectionCount}</p>
+                    <p className="text-sm opacity-60 mt-2">总里程 {stats.totalDistance.toFixed(1)} km</p>
+                  </div>
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm opacity-60">巡检人员</span>
+                      <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                        <Users className="w-5 h-5 text-purple-500" />
+                      </div>
+                    </div>
+                    <p className="text-4xl font-bold">{stats.topInspectors.length}</p>
+                    <p className="text-sm opacity-60 mt-2">上报隐患 {stats.totalHazards} 个</p>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 1 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <PieChart className="w-5 h-5" />
+                      隐患类型分布
+                    </h3>
+                    <ReactECharts option={hazardTypeChartOption} style={{ height: '300px' }} />
+                  </div>
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5" />
+                      隐患等级分布
+                    </h3>
+                    <ReactECharts option={hazardLevelChartOption} style={{ height: '300px' }} />
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 2 && (
+                <div className="space-y-6">
+                  <div className="p-6 rounded-xl bg-bg-secondary">
+                    <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5" />
+                      近30天趋势
+                    </h3>
+                    <ReactECharts option={trendChartOption} style={{ height: '300px' }} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                      <p className="text-sm opacity-60 mb-1">本月巡检</p>
+                      <p className="text-2xl font-bold">{stats.monthlyComparison.currentMonth.inspections}</p>
+                      <p className="text-xs mt-1">
+                        {monthlyDiff.inspections >= 0 ? (
+                          <span className="text-green-500">↑ {monthlyDiff.inspectionsPercent}% 较上月</span>
+                        ) : (
+                          <span className="text-red-500">↓ {monthlyDiff.inspectionsPercent}% 较上月</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                      <p className="text-sm opacity-60 mb-1">本月隐患</p>
+                      <p className="text-2xl font-bold">{stats.monthlyComparison.currentMonth.hazards}</p>
+                      <p className="text-xs mt-1">
+                        {monthlyDiff.hazards >= 0 ? (
+                          <span className="text-red-500">↑ {monthlyDiff.hazardsPercent}% 较上月</span>
+                        ) : (
+                          <span className="text-green-500">↓ {monthlyDiff.hazardsPercent}% 较上月</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-bg-secondary text-center">
+                      <p className="text-sm opacity-60 mb-1">本月里程</p>
+                      <p className="text-2xl font-bold">{stats.monthlyComparison.currentMonth.distance.toFixed(1)} km</p>
+                      <p className="text-xs mt-1">
+                        {parseFloat(monthlyDiff.distance) >= 0 ? (
+                          <span className="text-green-500">↑ {monthlyDiff.distancePercent}% 较上月</span>
+                        ) : (
+                          <span className="text-red-500">↓ {monthlyDiff.distancePercent}% 较上月</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 3 && (
+                <div className="space-y-6">
+                  {reportPhotos.length > 0 ? (
+                    <div className="p-6 rounded-xl bg-bg-secondary">
+                      <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                        <Image className="w-5 h-5" />
+                        现场照片摘要（{reportPhotos.length}张）
+                      </h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        {reportPhotos.map((photo) => {
+                          const hazard = getPhotoLinkedHazard(photo, filteredHazards);
+                          return (
+                            <div key={photo.id} className="relative rounded-xl overflow-hidden aspect-square">
+                              <img
+                                src={photo.thumbnail || photo.url}
+                                alt={photo.title}
+                                className="w-full h-full object-cover"
+                              />
+                              {hazard && (
+                                <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent">
+                                  <p className="text-sm text-white font-medium">{hazard.location}</p>
+                                  <p className="text-xs text-white/80 mt-1">
+                                    {getHazardTypeLabel(hazard.type)} · {getHazardLevelLabel(hazard.level)}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-8 rounded-xl bg-bg-secondary text-center opacity-50">
+                      <Image className="w-16 h-16 mx-auto mb-3" />
+                      <p>暂无关联照片</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {presentationSections[currentSection].keyHazards().length > 0 && (
+                <div className="p-6 rounded-xl bg-bg-secondary">
+                  <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <Target className="w-5 h-5" />
+                    重点关注隐患
+                  </h3>
+                  <div className="space-y-3">
+                    {presentationSections[currentSection].keyHazards().map((hazard) => (
+                      <div key={hazard.id} className="flex items-center justify-between p-4 rounded-xl bg-bg-primary border border-border-primary">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <span
+                            className="w-3 h-3 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: config.legend[`${hazard.level}Color` as keyof typeof config.legend] }}
+                          />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{hazard.location}</p>
+                            <p className="text-sm opacity-60 truncate">{hazard.description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-sm px-2 py-1 rounded-lg bg-bg-secondary">
+                            {getHazardTypeLabel(hazard.type)}
+                          </span>
+                          <span
+                            className="text-sm px-2 py-1 rounded-lg font-medium"
+                            style={{
+                              backgroundColor: `${config.legend[`${hazard.level}Color` as keyof typeof config.legend]}20`,
+                              color: config.legend[`${hazard.level}Color` as keyof typeof config.legend],
+                            }}
+                          >
+                            {getHazardLevelLabel(hazard.level)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-center items-center gap-2 pt-4">
+                {presentationSections.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentSection(idx)}
+                    className={`w-3 h-3 rounded-full transition-all ${
+                      currentSection === idx ? 'bg-primary w-8' : 'bg-border-primary'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="text-center pb-4 border-b border-border-primary">
+                <h1 className="text-2xl font-bold">智慧水务巡检汇报</h1>
+                <p className="text-sm opacity-60 mt-1">
+                  {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  {hasActiveFilters && (
+                    <span className="ml-2 px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs">
+                      筛选: {filters.area !== 'all' && filters.area + ' '}
+                      {filters.hazardLevel !== 'all' && getHazardLevelLabel(filters.hazardLevel as HazardLevel) + ' '}
+                      {filters.reporter !== 'all' && filters.reporter}
+                    </span>
+                  )}
+                </p>
+              </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="p-4 rounded-xl bg-bg-secondary">
@@ -836,11 +1228,11 @@ export const StatisticsModule: React.FC = () => {
             <div className="p-4 rounded-xl bg-bg-secondary">
               <h3 className="font-medium mb-3 flex items-center gap-2">
                 <Image className="w-4 h-4" />
-                现场照片摘要
+                现场照片摘要（{reportPhotos.length}张）
               </h3>
               <div className="grid grid-cols-3 gap-2">
                 {reportPhotos.map((photo) => {
-                  const hazard = hazards.find(h => h.id === photo.hazardId);
+                  const hazard = getPhotoLinkedHazard(photo, filteredHazards);
                   return (
                     <div key={photo.id} className="relative rounded-lg overflow-hidden aspect-square">
                       <img
@@ -899,6 +1291,8 @@ export const StatisticsModule: React.FC = () => {
                 ))}
             </div>
           </div>
+            </>
+          )}
         </div>
 
         <div className="flex justify-between items-center mt-6 pt-4 border-t border-border-primary">
