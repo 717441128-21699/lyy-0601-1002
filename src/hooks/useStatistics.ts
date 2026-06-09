@@ -24,14 +24,24 @@ export const useStatistics = (filters: StatisticsFilters = { area: 'all', hazard
       return p.area === filters.area;
     });
 
-    const filteredRoutes = routes; // 目前route没有area字段，不过滤
+    const filteredRoutes = routes.filter(r => {
+      const matchArea = filters.area === 'all' || r.area === filters.area;
+      const matchInspector = filters.reporter === 'all' || r.inspector === filters.reporter;
+      return matchArea && matchInspector;
+    });
 
-    const inspectorNames = [...new Set(hazards.map(h => h.reporter))];
+    const inspectorNames = [...new Set([
+      ...hazards.map(h => h.reporter),
+      ...routes.map(r => r.inspector)
+    ])];
     const areas = [...new Set(pipes.map(p => p.area))];
 
     const totalPipes = filteredPipes.length;
     const inspectedPipes = filteredPipes.filter(p => p.status === 'inspected').length;
-    const totalValves = valves.length;
+    const totalValves = valves.filter(v => {
+      if (filters.area === 'all') return true;
+      return areas.includes(filters.area);
+    }).length;
     const totalHazards = filteredHazards.length;
     const resolvedHazards = filteredHazards.filter(h => h.status === 'resolved').length;
     const inspectionCount = filteredRoutes.length;
@@ -41,8 +51,8 @@ export const useStatistics = (filters: StatisticsFilters = { area: 'all', hazard
       .map(name => ({
         id: `inspector-${name}`,
         name,
-        inspectionCount: filteredHazards.filter(h => h.reporter === name).length,
-        totalDistance: 0,
+        inspectionCount: filteredRoutes.filter(r => r.inspector === name).length,
+        totalDistance: filteredRoutes.filter(r => r.inspector === name).reduce((sum, r) => sum + r.distance, 0),
         hazardReported: filteredHazards.filter(h => h.reporter === name).length,
       }))
       .sort((a, b) => b.inspectionCount - a.inspectionCount)

@@ -51,6 +51,7 @@ export const mockRoutes: InspectionRoute[] = [
     name: '东城区巡检路线',
     date: '2026-06-08',
     inspector: '张伟',
+    area: '东城区',
     distance: 3.2,
     duration: 120,
     points: [
@@ -65,6 +66,7 @@ export const mockRoutes: InspectionRoute[] = [
     name: '西城区巡检路线',
     date: '2026-06-07',
     inspector: '李明',
+    area: '西城区',
     distance: 2.8,
     duration: 105,
     points: [
@@ -79,6 +81,7 @@ export const mockRoutes: InspectionRoute[] = [
     name: '南城区巡检路线',
     date: '2026-06-06',
     inspector: '王芳',
+    area: '南城区',
     distance: 3.5,
     duration: 130,
     points: [

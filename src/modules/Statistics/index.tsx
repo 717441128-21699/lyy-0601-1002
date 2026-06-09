@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   BarChart3,
   PieChart,
@@ -15,28 +15,38 @@ import {
   X,
   ChevronDown,
   RefreshCw,
+  Presentation,
+  Download,
+  Image,
+  MapPin,
+  FileText,
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
+import { Button } from '@/components/Button';
+import { Modal } from '@/components/Modal';
 import { useStatistics, StatisticsFilters } from '@/hooks/useStatistics';
 import { useTheme } from '@/hooks/useTheme';
 import { useInspectionStore } from '@/store/useInspectionStore';
 import { getHazardTypeLabel, getHazardLevelLabel } from '@/utils/suggestions';
+import { exportElementAsImage } from '@/utils/exporters';
 import type { HazardLevel } from '@/types';
 
 export const StatisticsModule: React.FC = () => {
   const { themeColors, currentTheme } = useTheme();
-  const { config, pipes, hazards } = useInspectionStore();
-
-  const [filters, setFilters] = useState<StatisticsFilters>({
-    area: 'all',
-    hazardLevel: 'all',
-    reporter: 'all',
-  });
+  const { config, pipes, hazards, photos, activeFilters, setActiveFilters } = useInspectionStore();
 
   const [showAreaFilter, setShowAreaFilter] = useState(false);
   const [showLevelFilter, setShowLevelFilter] = useState(false);
   const [showReporterFilter, setShowReporterFilter] = useState(false);
+  const [showReportView, setShowReportView] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const filters = activeFilters;
+  const setFilters = (newFilters: Partial<StatisticsFilters>) => {
+    setActiveFilters(newFilters);
+  };
 
   const stats = useStatistics(filters);
 
@@ -51,8 +61,29 @@ export const StatisticsModule: React.FC = () => {
   const hasActiveFilters = filters.area !== 'all' || filters.hazardLevel !== 'all' || filters.reporter !== 'all';
 
   const resetFilters = () => {
-    setFilters({ area: 'all', hazardLevel: 'all', reporter: 'all' });
+    setActiveFilters({ area: 'all', hazardLevel: 'all', reporter: 'all' });
   };
+
+  const handleExportReport = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try {
+      const filename = `智慧水务巡检汇报_${new Date().toISOString().split('T')[0]}`;
+      await exportElementAsImage('report-view-content', filename, config);
+    } catch (error) {
+      console.error('导出汇报图片失败:', error);
+      alert('导出失败：' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const reportPhotos = useMemo(() => {
+    const hazardPhotoIds = new Set(stats.hazardByType ? [] : []);
+    return photos
+      .filter(p => p.hazardId)
+      .slice(0, 6);
+  }, [photos]);
 
   const textColor = currentTheme === 'light' ? '#1F2937' : '#F3F4F6';
   const axisLineColor = currentTheme === 'light' ? '#E5E7EB' : '#374151';
@@ -406,6 +437,14 @@ export const StatisticsModule: React.FC = () => {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowReportView(true)}
+                >
+                  <Presentation className="w-4 h-4" />
+                  汇报视图
+                </Button>
                 <div className="relative">
                   <button
                     onClick={() => {
@@ -708,6 +747,177 @@ export const StatisticsModule: React.FC = () => {
           <ReactECharts option={trendChartOption} style={{ height: '320px' }} />
         </CardContent>
       </Card>
+
+      <Modal isOpen={showReportView} onClose={() => setShowReportView(false)} title="巡检汇报视图" size="xl">
+        <div id="report-view-content" ref={reportRef} className="space-y-4">
+          <div className="text-center pb-4 border-b border-border-primary">
+            <h1 className="text-2xl font-bold">智慧水务巡检汇报</h1>
+            <p className="text-sm opacity-60 mt-1">
+              {new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+              {hasActiveFilters && (
+                <span className="ml-2 px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs">
+                  筛选: {filters.area !== 'all' && filters.area + ' '}
+                  {filters.hazardLevel !== 'all' && getHazardLevelLabel(filters.hazardLevel as HazardLevel) + ' '}
+                  {filters.reporter !== 'all' && filters.reporter}
+                </span>
+              )}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs opacity-60">管段总数</span>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${themeColors.primary}20` }}>
+                  <Ruler className="w-4 h-4" style={{ color: themeColors.primary }} />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{stats.totalPipes}</p>
+              <p className="text-xs opacity-60 mt-1">已巡 {stats.inspectedPipes} ({inspectionRate}%)</p>
+            </div>
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs opacity-60">隐患总数</span>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${config.legend.severeColor}20` }}>
+                  <AlertTriangle className="w-4 h-4" style={{ color: config.legend.severeColor }} />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{stats.totalHazards}</p>
+              <p className="text-xs opacity-60 mt-1">已解决 {stats.resolvedHazards} ({resolveRate}%)</p>
+            </div>
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs opacity-60">巡检次数</span>
+                <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <BarChart3 className="w-4 h-4 text-green-500" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{stats.inspectionCount}</p>
+              <p className="text-xs opacity-60 mt-1">总里程 {stats.totalDistance.toFixed(1)} km</p>
+            </div>
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs opacity-60">巡检人员</span>
+                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-purple-500" />
+                </div>
+              </div>
+              <p className="text-2xl font-bold">{stats.topInspectors.length}</p>
+              <p className="text-xs opacity-60 mt-1">上报隐患 {stats.totalHazards} 个</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <PieChart className="w-4 h-4" />
+                隐患类型分布
+              </h3>
+              <ReactECharts option={hazardTypeChartOption} style={{ height: '220px' }} />
+            </div>
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                隐患等级分布
+              </h3>
+              <ReactECharts option={hazardLevelChartOption} style={{ height: '220px' }} />
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-bg-secondary">
+            <h3 className="font-medium mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              近30天趋势
+            </h3>
+            <ReactECharts option={trendChartOption} style={{ height: '200px' }} />
+          </div>
+
+          {reportPhotos.length > 0 && (
+            <div className="p-4 rounded-xl bg-bg-secondary">
+              <h3 className="font-medium mb-3 flex items-center gap-2">
+                <Image className="w-4 h-4" />
+                现场照片摘要
+              </h3>
+              <div className="grid grid-cols-3 gap-2">
+                {reportPhotos.map((photo) => {
+                  const hazard = hazards.find(h => h.id === photo.hazardId);
+                  return (
+                    <div key={photo.id} className="relative rounded-lg overflow-hidden aspect-square">
+                      <img
+                        src={photo.thumbnail || photo.url}
+                        alt={photo.title}
+                        className="w-full h-full object-cover"
+                      />
+                      {hazard && (
+                        <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
+                          <p className="text-xs text-white truncate">{hazard.location}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="p-4 rounded-xl bg-bg-secondary">
+            <h3 className="font-medium mb-3 flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              隐患清单摘要
+            </h3>
+            <div className="space-y-2 max-h-40 overflow-auto">
+              {hazards
+                .filter(h => {
+                  const matchArea = filters.area === 'all' || h.location.includes(filters.area);
+                  const matchLevel = filters.hazardLevel === 'all' || h.level === filters.hazardLevel;
+                  const matchReporter = filters.reporter === 'all' || h.reporter === filters.reporter;
+                  return matchArea && matchLevel && matchReporter;
+                })
+                .slice(0, 5)
+                .map((hazard) => (
+                  <div key={hazard.id} className="flex items-center justify-between p-2 rounded-lg bg-bg-primary">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: config.legend[`${hazard.level}Color` as keyof typeof config.legend] }}
+                      />
+                      <span className="text-sm truncate">{hazard.location}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs opacity-60">{getHazardTypeLabel(hazard.type)}</span>
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: `${config.legend[`${hazard.level}Color` as keyof typeof config.legend]}20`,
+                          color: config.legend[`${hazard.level}Color` as keyof typeof config.legend],
+                        }}
+                      >
+                        {getHazardLevelLabel(hazard.level)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center mt-6 pt-4 border-t border-border-primary">
+          <p className="text-sm opacity-60">
+            <MapPin className="w-4 h-4 inline mr-1" />
+            {filters.area === 'all' ? '全部区域' : filters.area}
+            {filters.reporter !== 'all' && ` · ${filters.reporter}`}
+          </p>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" onClick={() => setShowReportView(false)}>
+              关闭
+            </Button>
+            <Button variant="primary" onClick={handleExportReport} disabled={isExporting}>
+              <Download className="w-4 h-4" />
+              {isExporting ? '导出中...' : '导出汇报图片'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

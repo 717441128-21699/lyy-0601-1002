@@ -14,6 +14,8 @@ import {
   Link2,
   Download,
   Package,
+  Users,
+  ShieldAlert,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -22,7 +24,7 @@ import { useInspectionStore } from '@/store/useInspectionStore';
 import { useTheme } from '@/hooks/useTheme';
 import { getHazardLevelLabel, getHazardTypeLabel } from '@/utils/suggestions';
 import { convertFileToBase64, createPlaceholderImage } from '@/utils/placeholderImages';
-import type { Photo, PhotoCategory } from '@/types';
+import type { Photo, PhotoCategory, HazardLevel } from '@/types';
 import { mockAreas, mockInspectorNames } from '@/mock/data';
 
 export const PhotoWallModule: React.FC = () => {
@@ -38,6 +40,13 @@ export const PhotoWallModule: React.FC = () => {
   const [showHazardFilter, setShowHazardFilter] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportFilters, setExportFilters] = useState({
+    area: 'all',
+    hazardLevel: 'all' as HazardLevel | 'all',
+    reporter: 'all',
+    photoAssociation: 'all' as 'all' | 'linked' | 'none',
+  });
 
   const [newPhoto, setNewPhoto] = useState({
     title: '',
@@ -65,7 +74,9 @@ export const PhotoWallModule: React.FC = () => {
         ? true
         : filterHazard === 'none'
           ? !photo.hazardId
-          : photo.hazardId === filterHazard;
+          : filterHazard === 'linked'
+            ? !!photo.hazardId
+            : photo.hazardId === filterHazard;
     return matchKeyword && matchCategory && matchArea && matchHazard;
   });
 
@@ -125,32 +136,61 @@ export const PhotoWallModule: React.FC = () => {
     }
   };
 
-  const handleExportReportPackage = async () => {
+  const handleExportReportPackage = async (filters = exportFilters) => {
     try {
+      const filteredPipes = pipes.filter(p => filters.area === 'all' || p.area === filters.area);
+      const filteredValves = valves;
+      const filteredRoutes = routes.filter(r => {
+        const matchArea = filters.area === 'all' || r.area === filters.area;
+        const matchReporter = filters.reporter === 'all' || r.inspector === filters.reporter;
+        return matchArea && matchReporter;
+      });
+      const filteredHazards = hazards.filter(h => {
+        const matchArea = filters.area === 'all' || h.location.includes(filters.area);
+        const matchLevel = filters.hazardLevel === 'all' || h.level === filters.hazardLevel;
+        const matchReporter = filters.reporter === 'all' || h.reporter === filters.reporter;
+        return matchArea && matchLevel && matchReporter;
+      });
+      const filteredPhotoIds = new Set(filteredHazards.flatMap(h => h.photos));
+      const filteredPhotos = photos.filter(p => {
+        const matchAssociation = filters.photoAssociation === 'all'
+          ? true
+          : filters.photoAssociation === 'linked'
+            ? filteredPhotoIds.has(p.id)
+            : !filteredPhotoIds.has(p.id);
+        const matchArea = filters.area === 'all' || p.location === filters.area;
+        return matchAssociation && matchArea;
+      });
+      const filteredInspectors = inspectors.filter(i => {
+        if (filters.reporter === 'all') return true;
+        return i.name === filters.reporter;
+      });
+
       const reportPackage = {
         version: '1.0',
         type: '智慧水务巡检汇报包',
         exportedAt: new Date().toISOString(),
         description: '离线巡检汇报数据包，包含照片、隐患、管段和统计数据',
+        exportFilters: filters,
         data: {
-          pipes,
-          valves,
-          routes,
-          hazards,
-          photos,
-          inspectors,
+          pipes: filteredPipes,
+          valves: filteredValves,
+          routes: filteredRoutes,
+          hazards: filteredHazards,
+          photos: filteredPhotos,
+          inspectors: filteredInspectors,
         },
         statistics: {
-          totalPipes: pipes.length,
-          inspectedPipes: pipes.filter(p => p.status === 'inspected').length,
-          totalHazards: hazards.length,
-          resolvedHazards: hazards.filter(h => h.status === 'resolved').length,
-          totalPhotos: photos.length,
-          inspectionRate: pipes.length > 0
-            ? ((pipes.filter(p => p.status === 'inspected').length / pipes.length) * 100).toFixed(1) + '%'
+          totalPipes: filteredPipes.length,
+          inspectedPipes: filteredPipes.filter(p => p.status === 'inspected').length,
+          totalHazards: filteredHazards.length,
+          resolvedHazards: filteredHazards.filter(h => h.status === 'resolved').length,
+          totalPhotos: filteredPhotos.length,
+          inspectionRate: filteredPipes.length > 0
+            ? ((filteredPipes.filter(p => p.status === 'inspected').length / filteredPipes.length) * 100).toFixed(1) + '%'
             : '0%',
-          resolveRate: hazards.length > 0
-            ? ((hazards.filter(h => h.status === 'resolved').length / hazards.length) * 100).toFixed(1) + '%'
+          resolveRate: filteredHazards.length > 0
+            ? ((filteredHazards.filter(h => h.status === 'resolved').length / filteredHazards.length) * 100).toFixed(1) + '%'
             : '0%',
         },
         config: {
@@ -310,7 +350,7 @@ export const PhotoWallModule: React.FC = () => {
               照片墙
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={handleExportReportPackage}>
+              <Button variant="secondary" size="sm" onClick={() => setShowExportDialog(true)}>
                 <Package className="w-4 h-4" />
                 导出离线汇报包
               </Button>
@@ -795,6 +835,147 @@ export const PhotoWallModule: React.FC = () => {
         <div className="flex justify-end gap-3 mt-6">
           <Button variant="ghost" onClick={() => setSelectedPhoto(null)}>
             关闭
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal isOpen={showExportDialog} onClose={() => setShowExportDialog(false)} title="导出离线汇报包">
+        <div className="space-y-4">
+          <p className="text-sm opacity-70">
+            选择导出范围，只打包需要的数据。导入后看板内容和统计口径与导出时保持一致。
+          </p>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium mb-2">
+              <MapPin className="w-4 h-4" />
+              区域
+            </label>
+            <select
+              value={exportFilters.area}
+              onChange={(e) => setExportFilters({ ...exportFilters, area: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border-primary focus:outline-none focus:border-primary"
+            >
+              <option value="all">全部区域</option>
+              {mockAreas.map((area) => (
+                <option key={area} value={area}>
+                  {area}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium mb-2">
+              <ShieldAlert className="w-4 h-4" />
+              隐患等级
+            </label>
+            <select
+              value={exportFilters.hazardLevel}
+              onChange={(e) => setExportFilters({ ...exportFilters, hazardLevel: e.target.value as HazardLevel | 'all' })}
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border-primary focus:outline-none focus:border-primary"
+            >
+              <option value="all">全部等级</option>
+              <option value="mild">轻微</option>
+              <option value="medium">一般</option>
+              <option value="severe">严重</option>
+              <option value="critical">危急</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium mb-2">
+              <Users className="w-4 h-4" />
+              上报人
+            </label>
+            <select
+              value={exportFilters.reporter}
+              onChange={(e) => setExportFilters({ ...exportFilters, reporter: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border-primary focus:outline-none focus:border-primary"
+            >
+              <option value="all">全部人员</option>
+              {mockInspectorNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium mb-2">
+              <Link2 className="w-4 h-4" />
+              照片关联
+            </label>
+            <select
+              value={exportFilters.photoAssociation}
+              onChange={(e) => setExportFilters({ ...exportFilters, photoAssociation: e.target.value as 'all' | 'linked' | 'none' })}
+              className="w-full px-3 py-2 rounded-lg bg-bg-secondary border border-border-primary focus:outline-none focus:border-primary"
+            >
+              <option value="all">全部照片</option>
+              <option value="linked">仅已关联隐患的照片</option>
+              <option value="none">仅未关联隐患的照片</option>
+            </select>
+          </div>
+
+          <div className="p-3 rounded-lg bg-bg-secondary border border-border-primary">
+            <p className="text-sm font-medium mb-2">导出范围预览</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="opacity-60">管段：</span>
+                <span>{pipes.filter(p => exportFilters.area === 'all' || p.area === exportFilters.area).length}</span>
+              </div>
+              <div>
+                <span className="opacity-60">隐患：</span>
+                <span>{hazards.filter(h => {
+                  const matchArea = exportFilters.area === 'all' || h.location.includes(exportFilters.area);
+                  const matchLevel = exportFilters.hazardLevel === 'all' || h.level === exportFilters.hazardLevel;
+                  const matchReporter = exportFilters.reporter === 'all' || h.reporter === exportFilters.reporter;
+                  return matchArea && matchLevel && matchReporter;
+                }).length}</span>
+              </div>
+              <div>
+                <span className="opacity-60">路线：</span>
+                <span>{routes.filter(r => {
+                  const matchArea = exportFilters.area === 'all' || r.area === exportFilters.area;
+                  const matchReporter = exportFilters.reporter === 'all' || r.inspector === exportFilters.reporter;
+                  return matchArea && matchReporter;
+                }).length}</span>
+              </div>
+              <div>
+                <span className="opacity-60">照片：</span>
+                <span>{photos.filter(p => {
+                  const filteredHazardIds = new Set(hazards.filter(h => {
+                    const matchArea = exportFilters.area === 'all' || h.location.includes(exportFilters.area);
+                    const matchLevel = exportFilters.hazardLevel === 'all' || h.level === exportFilters.hazardLevel;
+                    const matchReporter = exportFilters.reporter === 'all' || h.reporter === exportFilters.reporter;
+                    return matchArea && matchLevel && matchReporter;
+                  }).flatMap(h => h.photos));
+                  const matchAssociation = exportFilters.photoAssociation === 'all'
+                    ? true
+                    : exportFilters.photoAssociation === 'linked'
+                      ? filteredHazardIds.has(p.id)
+                      : !filteredHazardIds.has(p.id);
+                  const matchArea = exportFilters.area === 'all' || p.location === exportFilters.area;
+                  return matchAssociation && matchArea;
+                }).length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button variant="ghost" onClick={() => setShowExportDialog(false)}>
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setShowExportDialog(false);
+              handleExportReportPackage(exportFilters);
+            }}
+          >
+            <Download className="w-4 h-4" />
+            确认导出
           </Button>
         </div>
       </Modal>

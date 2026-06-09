@@ -44,6 +44,7 @@ export interface InspectionRoute {
   name: string;
   date: string;
   inspector: string;
+  area: string;
   points: InspectionPoint[];
   distance: number;
   duration: number;
@@ -118,6 +119,13 @@ export interface AppConfig {
   exportQuality: number;
 }
 
+export interface ExportFilters {
+  area: string | 'all';
+  hazardLevel: HazardLevel | 'all';
+  reporter: string | 'all';
+  photoAssociation: 'all' | 'linked' | 'none';
+}
+
 export interface SavedProject {
   id: string;
   name: string;
@@ -132,6 +140,7 @@ export interface SavedProject {
     inspectors: Inspector[];
   };
   config: AppConfig;
+  exportFilters?: ExportFilters;
 }
 
 export interface ValidationResult {

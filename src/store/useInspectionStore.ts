@@ -15,6 +15,7 @@ import type {
   HazardLevel,
   HazardStatus,
 } from '@/types';
+import type { StatisticsFilters } from '@/hooks/useStatistics';
 import { storage } from '@/utils/storage';
 import { mockPipes, mockValves, mockRoutes, mockHazards, mockPhotos, mockInspectors } from '@/mock/data';
 
@@ -32,6 +33,13 @@ const defaultConfig: AppConfig = {
   exportQuality: 90,
 };
 
+interface ImportHistoryItem {
+  id: string;
+  name: string;
+  importedAt: string;
+  project: SavedProject;
+}
+
 interface InspectionState {
   currentModule: ModuleType;
   pipes: PipeSegment[];
@@ -48,6 +56,8 @@ interface InspectionState {
   playbackSpeed: number;
   playbackProgress: number;
   isLoading: boolean;
+  activeFilters: StatisticsFilters;
+  importHistory: ImportHistoryItem[];
 
   setCurrentModule: (module: ModuleType) => void;
   setSelectedArea: (area: string) => void;
@@ -56,6 +66,7 @@ interface InspectionState {
   setPlaybackSpeed: (speed: number) => void;
   setPlaybackProgress: (progress: number | ((prev: number) => number)) => void;
   setConfig: (config: Partial<AppConfig>) => void;
+  setActiveFilters: (filters: Partial<StatisticsFilters>) => void;
 
   loadData: () => void;
   loadMockData: () => void;
@@ -77,6 +88,8 @@ interface InspectionState {
   saveProject: (name: string) => void;
   loadProject: (id: string) => void;
   importAndLoadProject: (project: SavedProject) => void;
+  loadFromImportHistory: (id: string) => void;
+  clearImportHistory: () => void;
   deleteProject: (id: string) => void;
 
   clearAllData: () => void;
@@ -99,6 +112,12 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
   playbackSpeed: 1,
   playbackProgress: 0,
   isLoading: false,
+  activeFilters: {
+    area: 'all',
+    hazardLevel: 'all',
+    reporter: 'all',
+  },
+  importHistory: [],
 
   setCurrentModule: (module) => set({ currentModule: module }),
   setSelectedArea: (area) => set({ selectedArea: area }),
@@ -116,6 +135,13 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
       return { config };
     });
   },
+  setActiveFilters: (filters) => {
+    set((state) => {
+      const activeFilters = { ...state.activeFilters, ...filters };
+      localStorage.setItem('inspection_activeFilters', JSON.stringify(activeFilters));
+      return { activeFilters };
+    });
+  },
 
   loadData: () => {
     set({ isLoading: true });
@@ -127,6 +153,14 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
     const inspectors = storage.getInspectors();
     const config = storage.getConfig() || defaultConfig;
     const savedProjects = storage.getProjects();
+    const savedFilters = localStorage.getItem('inspection_activeFilters');
+    const activeFilters = savedFilters ? JSON.parse(savedFilters) : {
+      area: 'all',
+      hazardLevel: 'all',
+      reporter: 'all',
+    };
+    const savedImportHistory = localStorage.getItem('inspection_importHistory');
+    const importHistory = savedImportHistory ? JSON.parse(savedImportHistory) : [];
 
     if (pipes.length === 0 && valves.length === 0) {
       get().loadMockData();
@@ -140,6 +174,8 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
         inspectors,
         config,
         savedProjects,
+        activeFilters,
+        importHistory,
         isLoading: false,
       });
     }
@@ -263,6 +299,19 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
   },
 
   importAndLoadProject: (project) => {
+    const defaultFilters: StatisticsFilters = {
+      area: 'all',
+      hazardLevel: 'all',
+      reporter: 'all',
+    };
+    const filtersToApply: StatisticsFilters = project.exportFilters
+      ? {
+          area: project.exportFilters.area,
+          hazardLevel: project.exportFilters.hazardLevel as StatisticsFilters['hazardLevel'],
+          reporter: project.exportFilters.reporter,
+        }
+      : defaultFilters;
+
     set({
       pipes: project.data.pipes || [],
       valves: project.data.valves || [],
@@ -271,7 +320,20 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
       photos: project.data.photos || [],
       inspectors: project.data.inspectors || [],
       config: project.config,
+      activeFilters: filtersToApply,
     });
+    localStorage.setItem('inspection_activeFilters', JSON.stringify(filtersToApply));
+
+    const historyItem = {
+      id: uuidv4(),
+      name: project.name,
+      importedAt: new Date().toISOString(),
+      project,
+    };
+    const importHistory = [historyItem, ...get().importHistory].slice(0, 10);
+    set({ importHistory });
+    localStorage.setItem('inspection_importHistory', JSON.stringify(importHistory));
+
     const existingProject = get().savedProjects.find((p) => p.id === project.id);
     if (!existingProject) {
       const updatedProjects = [...get().savedProjects, project];
@@ -279,6 +341,18 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
       storage.setProjects(updatedProjects);
     }
     get().saveData();
+  },
+
+  loadFromImportHistory: (id) => {
+    const item = get().importHistory.find((h) => h.id === id);
+    if (item) {
+      get().importAndLoadProject(item.project);
+    }
+  },
+
+  clearImportHistory: () => {
+    set({ importHistory: [] });
+    localStorage.removeItem('inspection_importHistory');
   },
 
   deleteProject: (id) => {

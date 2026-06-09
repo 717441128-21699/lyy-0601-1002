@@ -173,6 +173,7 @@ export const importProjectFromJson = async (file: File): Promise<SavedProject> =
               exportFormat: data.config?.exportFormat || 'png',
               exportQuality: data.config?.exportQuality || 90,
             },
+            exportFilters: data.exportFilters,
             createdAt: data.exportedAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };

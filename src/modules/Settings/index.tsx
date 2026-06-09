@@ -18,6 +18,9 @@ import {
   AlertTriangle,
   Clock,
   FileSpreadsheet,
+  History,
+  RotateCcw,
+  Filter,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -46,6 +49,9 @@ export const SettingsModule: React.FC = () => {
     hazards,
     photos,
     inspectors,
+    importHistory,
+    loadFromImportHistory,
+    clearImportHistory,
   } = useInspectionStore();
   const { currentTheme, switchTheme, themeColors } = useTheme();
 
@@ -350,6 +356,76 @@ export const SettingsModule: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5" />
+              最近导入记录
+            </div>
+            {importHistory.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearImportHistory}>
+                <Trash2 className="w-4 h-4" />
+                清空历史
+              </Button>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {importHistory.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 opacity-50">
+              <History className="w-12 h-12 mb-3" />
+              <p>暂无导入记录</p>
+              <p className="text-sm mt-1">导入汇报包后会在这里显示，方便快速回滚</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {importHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-3 rounded-lg hover:bg-bg-secondary transition-colors border border-border-primary"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <FileJson className="w-4 h-4 text-primary" />
+                      <span className="font-medium truncate">{item.name}</span>
+                    </div>
+                    <div className="flex items-center gap-4 mt-1 text-sm opacity-60">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(item.importedAt).toLocaleString('zh-CN')}
+                      </span>
+                      {item.project.exportFilters && (
+                        <span className="flex items-center gap-1">
+                          <Filter className="w-3 h-3" />
+                          筛选: {item.project.exportFilters.area === 'all' ? '全部区域' : item.project.exportFilters.area}
+                          {item.project.exportFilters.hazardLevel !== 'all' && ` · ${item.project.exportFilters.hazardLevel}`}
+                          {item.project.exportFilters.reporter !== 'all' && ` · ${item.project.exportFilters.reporter}`}
+                        </span>
+                      )}
+                      {item.project.data && (
+                        <span className="flex items-center gap-1">
+                          <Database className="w-3 h-3" />
+                          {item.project.data.hazards?.length || 0}个隐患 · {item.project.data.pipes?.length || 0}条管段 · {item.project.data.photos?.length || 0}张照片
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => loadFromImportHistory(item.id)}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    回滚到此版本
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
