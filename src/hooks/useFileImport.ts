@@ -49,19 +49,18 @@ export const useFileImport = () => {
     });
   }, []);
 
-  const transformPipeData = useCallback((row: Record<string, unknown>): PipeSegment | null => {
-    const startX = Number(row.startX || row['起点X'] || 0);
-    const startY = Number(row.startY || row['起点Y'] || 0);
-    const endX = Number(row.endX || row['终点X'] || 0);
-    const endY = Number(row.endY || row['终点Y'] || 0);
+  const transformPipeData = useCallback((row: Record<string, unknown>): Omit<PipeSegment, 'id'> | null => {
+    const startX = Number(row.startX || row['起点X'] || Math.random() * 800 + 50);
+    const startY = Number(row.startY || row['起点Y'] || Math.random() * 600 + 50);
+    const endX = Number(row.endX || row['终点X'] || Math.random() * 800 + 50);
+    const endY = Number(row.endY || row['终点Y'] || Math.random() * 600 + 50);
 
-    const pipe: Partial<PipeSegment> = {
-      id: String(row.id || row['管段编号'] || uuidv4()),
+    const pipe: Omit<PipeSegment, 'id'> = {
       name: String(row.name || row['管段名称'] || ''),
       area: String(row.area || row['所属区域'] || ''),
       startPoint: [startX, startY] as [number, number],
       endPoint: [endX, endY] as [number, number],
-      diameter: Number(row.diameter || row['管径'] || 0),
+      diameter: Number(row.diameter || row['管径'] || 300),
       material: String(row.material || row['管材'] || ''),
       status: (row.status || row['状态']) === '已巡检' ? 'inspected' : 'uninspected',
       inspectedAt: String(row.inspectedAt || row['巡检时间'] || ''),
@@ -73,12 +72,12 @@ export const useFileImport = () => {
       return null;
     }
 
-    return pipe as PipeSegment;
+    return pipe;
   }, []);
 
-  const transformHazardData = useCallback((row: Record<string, unknown>): Omit<Hazard, 'id' | 'suggestion'> | null => {
-    const posX = Number(row.positionX || row['位置X'] || 0);
-    const posY = Number(row.positionY || row['位置Y'] || 0);
+  const transformHazardData = useCallback((row: Record<string, unknown>): Omit<Hazard, 'id' | 'suggestion' | 'reportedAt'> | null => {
+    const posX = Number(row.positionX || row['位置X'] || Math.random() * 800 + 50);
+    const posY = Number(row.positionY || row['位置Y'] || Math.random() * 600 + 50);
 
     const typeMap: Record<string, Hazard['type']> = {
       '渗漏': 'leak', '堵塞': 'blockage', '破损': 'damage', '其他': 'other',
@@ -88,14 +87,13 @@ export const useFileImport = () => {
       '轻微': 'minor', '一般': 'moderate', '严重': 'severe', '危急': 'critical',
     };
 
-    const hazard: Omit<Hazard, 'id' | 'suggestion'> = {
+    const hazard: Omit<Hazard, 'id' | 'suggestion' | 'reportedAt'> = {
       type: typeMap[String(row.type || row['隐患类型'])] || 'other',
       level: levelMap[String(row.level || row['隐患等级'])] || 'moderate',
       location: String(row.location || row['位置'] || ''),
       position: [posX, posY] as [number, number],
       description: String(row.description || row['描述'] || ''),
       reporter: String(row.reporter || row['上报人'] || ''),
-      reportedAt: String(row.reportedAt || row['上报时间'] || new Date().toISOString()),
       status: 'pending',
       photos: [],
     };

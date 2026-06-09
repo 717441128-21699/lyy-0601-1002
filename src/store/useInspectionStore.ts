@@ -76,6 +76,7 @@ interface InspectionState {
 
   saveProject: (name: string) => void;
   loadProject: (id: string) => void;
+  importAndLoadProject: (project: SavedProject) => void;
   deleteProject: (id: string) => void;
 
   clearAllData: () => void;
@@ -257,17 +258,27 @@ export const useInspectionStore = create<InspectionState>((set, get) => ({
   loadProject: (id) => {
     const project = get().savedProjects.find((p) => p.id === id);
     if (project) {
-      set({
-        pipes: project.data.pipes,
-        valves: project.data.valves,
-        routes: project.data.routes,
-        hazards: project.data.hazards,
-        photos: project.data.photos,
-        inspectors: project.data.inspectors,
-        config: project.config,
-      });
-      get().saveData();
+      get().importAndLoadProject(project);
     }
+  },
+
+  importAndLoadProject: (project) => {
+    set({
+      pipes: project.data.pipes || [],
+      valves: project.data.valves || [],
+      routes: project.data.routes || [],
+      hazards: project.data.hazards || [],
+      photos: project.data.photos || [],
+      inspectors: project.data.inspectors || [],
+      config: project.config,
+    });
+    const existingProject = get().savedProjects.find((p) => p.id === project.id);
+    if (!existingProject) {
+      const updatedProjects = [...get().savedProjects, project];
+      set({ savedProjects: updatedProjects });
+      storage.setProjects(updatedProjects);
+    }
+    get().saveData();
   },
 
   deleteProject: (id) => {

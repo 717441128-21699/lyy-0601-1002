@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Map, Filter, ZoomIn, ZoomOut, Maximize2, Info, CircleDot, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
 import { useInspectionStore } from '@/store/useInspectionStore';
@@ -17,7 +17,7 @@ interface MapViewport {
 export const PipeNetworkMapModule: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { pipes, valves, hazards, selectedArea, setSelectedArea, config } = useInspectionStore();
+  const { pipes, valves, hazards, selectedArea, setSelectedArea, config, updatePipe } = useInspectionStore();
   const { themeColors } = useTheme();
   const [viewport, setViewport] = useState<MapViewport>({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
@@ -297,13 +297,13 @@ export const PipeNetworkMapModule: React.FC = () => {
     setSelectedValve(null);
   };
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: pipes.length,
     inspected: pipes.filter(p => p.status === 'inspected').length,
     uninspected: pipes.filter(p => p.status === 'uninspected').length,
     valves: valves.length,
     hazards: hazards.length,
-  };
+  }), [pipes, valves, hazards]);
 
   return (
     <div className="animate-fade-in">
@@ -508,6 +508,59 @@ export const PipeNetworkMapModule: React.FC = () => {
                         <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{selectedPipe.inspector}</p>
                       </div>
                     )}
+                    <div className="pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                      <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>快速操作</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => {
+                            updatePipe(selectedPipe.id, {
+                              status: 'inspected',
+                              inspectedAt: new Date().toLocaleString('zh-CN'),
+                              inspector: '当前用户',
+                            });
+                            setSelectedPipe({
+                              ...selectedPipe,
+                              status: 'inspected',
+                              inspectedAt: new Date().toLocaleString('zh-CN'),
+                              inspector: '当前用户',
+                            });
+                          }}
+                          disabled={selectedPipe.status === 'inspected'}
+                          className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedPipe.status === 'inspected'
+                              ? 'bg-green-500/20 text-green-400 cursor-not-allowed'
+                              : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+                          }`}
+                        >
+                          <CheckCircle2 size={16} />
+                          标记已巡
+                        </button>
+                        <button
+                          onClick={() => {
+                            updatePipe(selectedPipe.id, {
+                              status: 'uninspected',
+                              inspectedAt: '',
+                              inspector: '',
+                            });
+                            setSelectedPipe({
+                              ...selectedPipe,
+                              status: 'uninspected',
+                              inspectedAt: '',
+                              inspector: '',
+                            });
+                          }}
+                          disabled={selectedPipe.status === 'uninspected'}
+                          className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            selectedPipe.status === 'uninspected'
+                              ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed'
+                              : 'bg-gray-500/10 text-gray-400 hover:bg-gray-500/20'
+                          }`}
+                        >
+                          <XCircle size={16} />
+                          标记未巡
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {selectedValve && (

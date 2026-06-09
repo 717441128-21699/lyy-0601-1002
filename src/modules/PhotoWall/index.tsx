@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Image,
   Search,
@@ -19,6 +19,7 @@ import { Modal } from '@/components/Modal';
 import { useInspectionStore } from '@/store/useInspectionStore';
 import { useTheme } from '@/hooks/useTheme';
 import { getHazardLevelLabel, getHazardTypeLabel } from '@/utils/suggestions';
+import { convertFileToBase64, createPlaceholderImage } from '@/utils/placeholderImages';
 import type { Photo, PhotoCategory } from '@/types';
 import { mockAreas, mockInspectorNames } from '@/mock/data';
 
@@ -45,6 +46,10 @@ export const PhotoWallModule: React.FC = () => {
     takenBy: mockInspectorNames[0],
   });
   const [tagInput, setTagInput] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredPhotos = photos.filter((photo) => {
     const matchKeyword =
@@ -99,36 +104,76 @@ export const PhotoWallModule: React.FC = () => {
     setNewPhoto({ ...newPhoto, tags: newPhoto.tags.filter((t) => t !== tag) });
   };
 
-  const handleUpload = () => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      const base64 = await convertFileToBase64(file);
+      setPreviewUrl(base64);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setSelectedFile(file);
+      const base64 = await convertFileToBase64(file);
+      setPreviewUrl(base64);
+    }
+  };
+
+  const handleUpload = async () => {
     if (!newPhoto.title) {
       alert('请填写照片标题');
       return;
     }
 
-    const generatePhotoUrl = (seed: string) =>
-      `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent('water pipeline inspection ' + seed)}&image_size=square_hd`;
+    setIsUploading(true);
 
-    const url = generatePhotoUrl(newPhoto.title);
-    addPhoto({
-      url,
-      thumbnail: url,
-      title: newPhoto.title,
-      takenAt: new Date().toISOString().split('T')[0],
-      location: newPhoto.location,
-      hazardId: newPhoto.hazardId || undefined,
-      category: newPhoto.category,
-      tags: newPhoto.tags,
-    });
+    try {
+      let url: string;
+      let thumbnail: string;
 
-    setShowUploadModal(false);
-    setNewPhoto({
-      title: '',
-      location: mockAreas[0],
-      category: 'site',
-      hazardId: '',
-      tags: [],
-      takenBy: mockInspectorNames[0],
-    });
+      if (previewUrl) {
+        url = previewUrl;
+        thumbnail = previewUrl;
+      } else {
+        const placeholder = createPlaceholderImage('site', newPhoto.title);
+        url = placeholder.url;
+        thumbnail = placeholder.thumbnail;
+      }
+
+      addPhoto({
+        url,
+        thumbnail,
+        title: newPhoto.title,
+        takenAt: new Date().toLocaleString('zh-CN'),
+        location: newPhoto.location,
+        hazardId: newPhoto.hazardId || undefined,
+        category: newPhoto.category,
+        tags: newPhoto.tags,
+      });
+
+      setShowUploadModal(false);
+      setNewPhoto({
+        title: '',
+        location: mockAreas[0],
+        category: 'site',
+        hazardId: '',
+        tags: [],
+        takenBy: mockInspectorNames[0],
+      });
+      setSelectedFile(null);
+      setPreviewUrl('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error) {
+      alert('上传失败：' + (error as Error).message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const stats = {
@@ -443,13 +488,48 @@ export const PhotoWallModule: React.FC = () => {
         size="lg"
       >
         <div className="space-y-4">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
           <div
-            className="border-2 border-dashed border-border-primary rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
-            onClick={() => alert('演示模式：将自动生成模拟图片')}
+            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+            style={{ borderColor: 'var(--border-primary)' }}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDrop}
           >
-            <Upload className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-sm opacity-70">点击或拖拽照片到此处上传</p>
-            <p className="text-xs opacity-50 mt-1">支持 JPG、PNG 格式</p>
+            {previewUrl ? (
+              <div className="space-y-3">
+                <img
+                  src={previewUrl}
+                  alt="预览"
+                  className="w-40 h-40 object-cover rounded-lg mx-auto"
+                />
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {selectedFile?.name}
+                </p>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPreviewUrl('');
+                    setSelectedFile(null);
+                  }}
+                  className="text-sm text-red-500 hover:text-red-400"
+                >
+                  重新选择
+                </button>
+              </div>
+            ) : (
+              <div>
+                <Upload className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p className="text-sm opacity-70">点击或拖拽照片到此处上传</p>
+                <p className="text-xs opacity-50 mt-1">支持 JPG、PNG 格式</p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -548,11 +628,11 @@ export const PhotoWallModule: React.FC = () => {
         </div>
 
         <div className="flex justify-end gap-3 mt-6">
-          <Button variant="ghost" onClick={() => setShowUploadModal(false)}>
+          <Button variant="ghost" onClick={() => setShowUploadModal(false)} disabled={isUploading}>
             取消
           </Button>
-          <Button variant="primary" onClick={handleUpload}>
-            上传
+          <Button variant="primary" onClick={handleUpload} disabled={isUploading}>
+            {isUploading ? '上传中...' : '上传'}
           </Button>
         </div>
       </Modal>

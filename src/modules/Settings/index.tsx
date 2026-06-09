@@ -35,6 +35,7 @@ export const SettingsModule: React.FC = () => {
     saveProject,
     savedProjects,
     loadProject,
+    importAndLoadProject,
     deleteProject,
     resetConfig,
     clearAllData,
@@ -100,11 +101,11 @@ export const SettingsModule: React.FC = () => {
         ...project,
         id: project.id || `imported-${Date.now()}`,
         name: `${project.name} (导入)`,
-        createdAt: new Date().toISOString(),
+        createdAt: project.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      loadProject(newProject.id);
-      alert('方案导入成功');
+      importAndLoadProject(newProject);
+      alert('方案导入成功！数据已加载，刷新后仍然保留。');
     } catch (error) {
       alert('导入失败：' + (error as Error).message);
     }

@@ -10,10 +10,6 @@ export const validatePipeData = (data: unknown): ValidationResult => {
 
   const pipe = data as Partial<PipeSegment>;
 
-  if (!pipe.id) {
-    errors.push('缺少唯一标识ID');
-  }
-
   if (!pipe.name) {
     errors.push('缺少管段名称');
   }
@@ -107,10 +103,6 @@ export const validateHazardData = (data: unknown): ValidationResult => {
   }
 
   const hazard = data as Partial<Hazard>;
-
-  if (!hazard.id) {
-    errors.push('缺少唯一标识ID');
-  }
 
   if (!hazard.type || !['leak', 'blockage', 'damage', 'other'].includes(hazard.type)) {
     errors.push('隐患类型无效');

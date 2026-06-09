@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { PipeSegment, ValveWell, InspectionRoute, Hazard, Photo, Inspector } from '@/types';
+import { createPlaceholderImage } from '@/utils/placeholderImages';
 
 const areas = ['东城区', '西城区', '南城区', '北城区', '中心区'];
 const materials = ['球墨铸铁', 'PE管', '钢管', 'PVC管', '水泥管'];
@@ -157,22 +158,32 @@ export const mockHazards: Hazard[] = [
   },
 ];
 
-const generatePhotoUrl = (seed: string) => 
-  `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent('water pipeline inspection ' + seed)}&image_size=square_hd`;
+const img1 = createPlaceholderImage('normal', '管段A-001正常');
+const img2 = createPlaceholderImage('leak', '管段A-002渗漏');
+const img3 = createPlaceholderImage('blockage', '管段B-001堵塞');
+const img4 = createPlaceholderImage('leak', '管段C-001轻微渗漏');
+const img5 = createPlaceholderImage('valve', '阀门井维护');
+const img6 = createPlaceholderImage('damage', '管段E-004裂纹');
+const img7 = createPlaceholderImage('damage', '井盖破损');
+const img8 = createPlaceholderImage('valve', '阀门井V-001');
+const img9 = createPlaceholderImage('site', '巡检现场');
+const img10 = createPlaceholderImage('equipment', '流量计检查');
+const img11 = createPlaceholderImage('document', '管网图纸');
+const img12 = createPlaceholderImage('repair', '维修作业');
 
 export const mockPhotos: Photo[] = [
-  { id: 'photo-001', url: generatePhotoUrl('pipeline normal'), thumbnail: generatePhotoUrl('pipeline normal'), title: '管段A-001正常', takenAt: '2026-06-08 09:35', location: '东城区', category: 'site', tags: ['管段', '正常'] },
-  { id: 'photo-002', url: generatePhotoUrl('water leakage'), thumbnail: generatePhotoUrl('water leakage'), title: '管段A-002渗漏', takenAt: '2026-06-08 10:18', location: '东城区', hazardId: mockHazards[0].id, category: 'hazard', tags: ['渗漏', '严重'] },
-  { id: 'photo-003', url: generatePhotoUrl('pipe blockage'), thumbnail: generatePhotoUrl('pipe blockage'), title: '管段B-001堵塞', takenAt: '2026-06-07 14:25', location: '西城区', hazardId: mockHazards[1].id, category: 'hazard', tags: ['堵塞', '一般'] },
-  { id: 'photo-004', url: generatePhotoUrl('minor water leak'), thumbnail: generatePhotoUrl('minor water leak'), title: '管段C-001轻微渗漏', takenAt: '2026-06-06 08:50', location: '南城区', hazardId: mockHazards[3].id, category: 'hazard', tags: ['渗漏', '轻微'] },
-  { id: 'photo-005', url: generatePhotoUrl('valve maintenance'), thumbnail: generatePhotoUrl('valve maintenance'), title: '阀门井维护', takenAt: '2026-06-06 10:20', location: '南城区', category: 'equipment', tags: ['阀门井', '维护'] },
-  { id: 'photo-006', url: generatePhotoUrl('pipe crack damage'), thumbnail: generatePhotoUrl('pipe crack damage'), title: '管段E-004裂纹', takenAt: '2026-06-05 11:35', location: '中心区', hazardId: mockHazards[2].id, category: 'hazard', tags: ['破损', '危急'] },
-  { id: 'photo-007', url: generatePhotoUrl('broken manhole cover'), thumbnail: generatePhotoUrl('broken manhole cover'), title: '阀门井井盖破损', takenAt: '2026-06-04 16:05', location: '北城区', hazardId: mockHazards[4].id, category: 'hazard', tags: ['井盖', '破损'] },
-  { id: 'photo-008', url: generatePhotoUrl('water valve'), thumbnail: generatePhotoUrl('water valve'), title: '阀门井V-001', takenAt: '2026-06-08 09:05', location: '东城区', category: 'equipment', tags: ['阀门井', '正常'] },
-  { id: 'photo-009', url: generatePhotoUrl('inspection work'), thumbnail: generatePhotoUrl('inspection work'), title: '巡检现场', takenAt: '2026-06-07 14:00', location: '西城区', category: 'site', tags: ['巡检', '现场'] },
-  { id: 'photo-010', url: generatePhotoUrl('water meter'), thumbnail: generatePhotoUrl('water meter'), title: '流量计检查', takenAt: '2026-06-06 09:15', location: '南城区', category: 'equipment', tags: ['设备', '检查'] },
-  { id: 'photo-011', url: generatePhotoUrl('pipeline map'), thumbnail: generatePhotoUrl('pipeline map'), title: '管网图纸', takenAt: '2026-06-05 10:00', location: '中心区', category: 'site', tags: ['图纸', '资料'] },
-  { id: 'photo-012', url: generatePhotoUrl('repair work'), thumbnail: generatePhotoUrl('repair work'), title: '维修作业', takenAt: '2026-06-04 14:30', location: '北城区', category: 'site', tags: ['维修', '作业'] },
+  { id: 'photo-001', url: img1.url, thumbnail: img1.thumbnail, title: '管段A-001正常', takenAt: '2026-06-08 09:35', location: '东城区', category: 'site', tags: ['管段', '正常'] },
+  { id: 'photo-002', url: img2.url, thumbnail: img2.thumbnail, title: '管段A-002渗漏', takenAt: '2026-06-08 10:18', location: '东城区', hazardId: mockHazards[0].id, category: 'hazard', tags: ['渗漏', '严重'] },
+  { id: 'photo-003', url: img3.url, thumbnail: img3.thumbnail, title: '管段B-001堵塞', takenAt: '2026-06-07 14:25', location: '西城区', hazardId: mockHazards[1].id, category: 'hazard', tags: ['堵塞', '一般'] },
+  { id: 'photo-004', url: img4.url, thumbnail: img4.thumbnail, title: '管段C-001轻微渗漏', takenAt: '2026-06-06 08:50', location: '南城区', hazardId: mockHazards[3].id, category: 'hazard', tags: ['渗漏', '轻微'] },
+  { id: 'photo-005', url: img5.url, thumbnail: img5.thumbnail, title: '阀门井维护', takenAt: '2026-06-06 10:20', location: '南城区', category: 'equipment', tags: ['阀门井', '维护'] },
+  { id: 'photo-006', url: img6.url, thumbnail: img6.thumbnail, title: '管段E-004裂纹', takenAt: '2026-06-05 11:35', location: '中心区', hazardId: mockHazards[2].id, category: 'hazard', tags: ['破损', '危急'] },
+  { id: 'photo-007', url: img7.url, thumbnail: img7.thumbnail, title: '阀门井井盖破损', takenAt: '2026-06-04 16:05', location: '北城区', hazardId: mockHazards[4].id, category: 'hazard', tags: ['井盖', '破损'] },
+  { id: 'photo-008', url: img8.url, thumbnail: img8.thumbnail, title: '阀门井V-001', takenAt: '2026-06-08 09:05', location: '东城区', category: 'equipment', tags: ['阀门井', '正常'] },
+  { id: 'photo-009', url: img9.url, thumbnail: img9.thumbnail, title: '巡检现场', takenAt: '2026-06-07 14:00', location: '西城区', category: 'site', tags: ['巡检', '现场'] },
+  { id: 'photo-010', url: img10.url, thumbnail: img10.thumbnail, title: '流量计检查', takenAt: '2026-06-06 09:15', location: '南城区', category: 'equipment', tags: ['设备', '检查'] },
+  { id: 'photo-011', url: img11.url, thumbnail: img11.thumbnail, title: '管网图纸', takenAt: '2026-06-05 10:00', location: '中心区', category: 'site', tags: ['图纸', '资料'] },
+  { id: 'photo-012', url: img12.url, thumbnail: img12.thumbnail, title: '维修作业', takenAt: '2026-06-04 14:30', location: '北城区', category: 'site', tags: ['维修', '作业'] },
 ];
 
 // Update hazard photos with actual photo IDs
