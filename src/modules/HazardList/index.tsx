@@ -16,6 +16,10 @@ import {
   ChevronDown,
   Lightbulb,
   Eye,
+  CheckSquare,
+  Square,
+  MoreHorizontal,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -46,6 +50,9 @@ export const HazardListModule: React.FC = () => {
   const [showLevelFilter, setShowLevelFilter] = useState(false);
   const [showStatusFilter, setShowStatusFilter] = useState(false);
   const [showTypeFilter, setShowTypeFilter] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchMenu, setShowBatchMenu] = useState(false);
+  const [batchStatus, setBatchStatus] = useState<HazardStatus>('processing');
 
   const [newHazard, setNewHazard] = useState({
     type: 'leak' as HazardType,
@@ -124,6 +131,54 @@ export const HazardListModule: React.FC = () => {
     if (selectedHazard?.id === id) {
       setSelectedHazard({ ...selectedHazard, status });
     }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredHazards.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredHazards.map(h => h.id)));
+    }
+  };
+
+  const handleBatchStatusChange = () => {
+    if (selectedIds.size === 0) {
+      alert('请先选择要处理的隐患');
+      return;
+    }
+    selectedIds.forEach(id => {
+      updateHazardStatus(id, batchStatus);
+    });
+    alert(`已将 ${selectedIds.size} 条隐患状态更新为：${getHazardStatusLabel(batchStatus)}`);
+    setSelectedIds(new Set());
+    setShowBatchMenu(false);
+  };
+
+  const handleBatchGenerateSuggestions = () => {
+    if (selectedIds.size === 0) {
+      alert('请先选择要处理的隐患');
+      return;
+    }
+    selectedIds.forEach(id => {
+      const hazard = hazards.find(h => h.id === id);
+      if (hazard) {
+        const suggestion = generateSuggestion(hazard.type, hazard.level, hazard.description);
+        updateHazard(id, { suggestion });
+      }
+    });
+    alert(`已为 ${selectedIds.size} 条隐患生成整改建议`);
+    setSelectedIds(new Set());
+    setShowBatchMenu(false);
   };
 
   const handleDelete = (id: string) => {
@@ -221,14 +276,105 @@ export const HazardListModule: React.FC = () => {
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5" />
               隐患清单
+              {selectedIds.size > 0 && (
+                <span className="text-sm font-normal px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                  已选 {selectedIds.size} 条
+                </span>
+              )}
             </div>
-            <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
-              <Plus className="w-4 h-4" />
-              登记隐患
-            </Button>
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <div className="relative">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowBatchMenu(!showBatchMenu)}
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                    批量操作
+                  </Button>
+                  {showBatchMenu && (
+                    <div className="absolute top-full right-0 mt-2 bg-bg-primary border border-border-primary rounded-lg shadow-xl z-20 min-w-[240px] p-4 space-y-4">
+                      <div>
+                        <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                          批量更新状态
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(['pending', 'processing', 'resolved'] as HazardStatus[]).map(status => (
+                            <button
+                              key={status}
+                              onClick={() => setBatchStatus(status)}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                                batchStatus === status
+                                  ? 'bg-primary text-white'
+                                  : 'bg-bg-secondary hover:bg-bg-tertiary'
+                              }`}
+                              style={{
+                                color: batchStatus === status ? 'var(--text-inverse)' : 'var(--text-primary)',
+                              }}
+                            >
+                              {getHazardStatusLabel(status)}
+                            </button>
+                          ))}
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="w-full mt-3"
+                          onClick={handleBatchStatusChange}
+                        >
+                          应用状态
+                        </Button>
+                      </div>
+                      <div className="pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-full"
+                          onClick={handleBatchGenerateSuggestions}
+                        >
+                          <Lightbulb className="w-4 h-4" />
+                          批量生成整改建议
+                        </Button>
+                      </div>
+                      <div className="pt-3 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            setSelectedIds(new Set());
+                            setShowBatchMenu(false);
+                          }}
+                        >
+                          取消选择
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
+                <Plus className="w-4 h-4" />
+                登记隐患
+              </Button>
+            </div>
           </CardTitle>
 
           <div className="flex items-center gap-3 mt-3 flex-wrap">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleSelectAll}
+              className="flex-shrink-0"
+            >
+              {selectedIds.size === filteredHazards.length && filteredHazards.length > 0 ? (
+                <CheckSquare className="w-4 h-4 text-primary" />
+              ) : (
+                <Square className="w-4 h-4" />
+              )}
+              {selectedIds.size === filteredHazards.length && filteredHazards.length > 0 ? '取消全选' : '全选'}
+            </Button>
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-50" />
               <input
@@ -381,11 +527,28 @@ export const HazardListModule: React.FC = () => {
               {filteredHazards.map((hazard) => (
                 <div
                   key={hazard.id}
-                  className="p-4 rounded-lg border border-border-primary hover:border-primary/50 transition-all cursor-pointer bg-bg-secondary/50"
+                  className={`p-4 rounded-lg border transition-all cursor-pointer bg-bg-secondary/50 ${
+                    selectedIds.has(hazard.id)
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border-primary hover:border-primary/50'
+                  }`}
                   onClick={() => handleViewDetail(hazard)}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSelect(hazard.id);
+                        }}
+                        className="mt-1 flex-shrink-0 hover:opacity-80 transition-opacity"
+                      >
+                        {selectedIds.has(hazard.id) ? (
+                          <CheckSquare className="w-5 h-5 text-primary" />
+                        ) : (
+                          <Square className="w-5 h-5 opacity-50" />
+                        )}
+                      </button>
                       <div
                         className="w-3 h-3 rounded-full mt-1.5 flex-shrink-0"
                         style={{ backgroundColor: getLevelColor(hazard.level) }}

@@ -140,7 +140,51 @@ export const importProjectFromJson = async (file: File): Promise<SavedProject> =
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target?.result as string);
-        resolve(data as SavedProject);
+
+        // 支持两种格式：标准SavedProject格式 和 智慧水务巡检汇报包格式
+        let savedProject: SavedProject;
+
+        if (data.type === '智慧水务巡检汇报包') {
+          // 处理离线汇报包格式
+          savedProject = {
+            id: `report-${Date.now()}`,
+            name: `${data.type}_${new Date(data.exportedAt).toLocaleDateString('zh-CN')}`,
+            data: {
+              pipes: data.data?.pipes || [],
+              valves: data.data?.valves || [],
+              routes: data.data?.routes || [],
+              hazards: data.data?.hazards || [],
+              photos: data.data?.photos || [],
+              inspectors: data.data?.inspectors || [],
+            },
+            config: {
+              theme: data.config?.theme || 'tech',
+              legend: data.config?.legend || {
+                pipeColor: '#0ea5e9',
+                inspectedColor: '#22c55e',
+                uninspectedColor: '#94a3b8',
+                valveColor: '#f59e0b',
+                hazardColor: '#ef4444',
+                minorColor: '#22c55e',
+                moderateColor: '#f59e0b',
+                severeColor: '#f97316',
+                criticalColor: '#ef4444',
+              },
+              exportFormat: data.config?.exportFormat || 'png',
+              exportQuality: data.config?.exportQuality || 90,
+            },
+            createdAt: data.exportedAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+        } else {
+          // 处理标准SavedProject格式
+          if (!data.data || !data.config) {
+            throw new Error('无效的方案文件格式');
+          }
+          savedProject = data as SavedProject;
+        }
+
+        resolve(savedProject);
       } catch (error) {
         reject(new Error('文件格式无效'));
       }

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   BarChart3,
   PieChart,
@@ -11,18 +11,48 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Calendar,
+  Filter,
+  X,
+  ChevronDown,
+  RefreshCw,
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
-import { useStatistics } from '@/hooks/useStatistics';
+import { useStatistics, StatisticsFilters } from '@/hooks/useStatistics';
 import { useTheme } from '@/hooks/useTheme';
 import { useInspectionStore } from '@/store/useInspectionStore';
 import { getHazardTypeLabel, getHazardLevelLabel } from '@/utils/suggestions';
+import type { HazardLevel } from '@/types';
 
 export const StatisticsModule: React.FC = () => {
-  const stats = useStatistics();
   const { themeColors, currentTheme } = useTheme();
-  const { config } = useInspectionStore();
+  const { config, pipes, hazards } = useInspectionStore();
+
+  const [filters, setFilters] = useState<StatisticsFilters>({
+    area: 'all',
+    hazardLevel: 'all',
+    reporter: 'all',
+  });
+
+  const [showAreaFilter, setShowAreaFilter] = useState(false);
+  const [showLevelFilter, setShowLevelFilter] = useState(false);
+  const [showReporterFilter, setShowReporterFilter] = useState(false);
+
+  const stats = useStatistics(filters);
+
+  const availableAreas = useMemo(() => {
+    return [...new Set(pipes.map(p => p.area))];
+  }, [pipes]);
+
+  const availableReporters = useMemo(() => {
+    return [...new Set(hazards.map(h => h.reporter))];
+  }, [hazards]);
+
+  const hasActiveFilters = filters.area !== 'all' || filters.hazardLevel !== 'all' || filters.reporter !== 'all';
+
+  const resetFilters = () => {
+    setFilters({ area: 'all', hazardLevel: 'all', reporter: 'all' });
+  };
 
   const textColor = currentTheme === 'light' ? '#1F2937' : '#F3F4F6';
   const axisLineColor = currentTheme === 'light' ? '#E5E7EB' : '#374151';
@@ -362,6 +392,177 @@ export const StatisticsModule: React.FC = () => {
 
   return (
     <div className="space-y-4 h-full overflow-auto">
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                统计分析
+                {hasActiveFilters && (
+                  <span className="text-sm font-normal px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                    已筛选
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowAreaFilter(!showAreaFilter);
+                      setShowLevelFilter(false);
+                      setShowReporterFilter(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-bg-secondary"
+                    style={{
+                      background: filters.area !== 'all' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                      color: filters.area !== 'all' ? 'var(--text-inverse)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    <Filter className="w-4 h-4" />
+                    区域: {filters.area === 'all' ? '全部' : filters.area}
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  {showAreaFilter && (
+                    <div className="absolute top-full left-0 mt-2 bg-bg-primary border border-border-primary rounded-lg shadow-xl z-20 min-w-[150px]">
+                      <div
+                        className="px-4 py-2 hover:bg-bg-secondary cursor-pointer text-sm"
+                        onClick={() => {
+                          setFilters({ ...filters, area: 'all' });
+                          setShowAreaFilter(false);
+                        }}
+                      >
+                        全部区域
+                      </div>
+                      {availableAreas.map(area => (
+                        <div
+                          key={area}
+                          className="px-4 py-2 hover:bg-bg-secondary cursor-pointer text-sm flex items-center justify-between"
+                          onClick={() => {
+                            setFilters({ ...filters, area });
+                            setShowAreaFilter(false);
+                          }}
+                        >
+                          {area}
+                          {filters.area === area && <CheckCircle2 className="w-4 h-4 text-primary" />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowLevelFilter(!showLevelFilter);
+                      setShowAreaFilter(false);
+                      setShowReporterFilter(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-bg-secondary"
+                    style={{
+                      background: filters.hazardLevel !== 'all' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                      color: filters.hazardLevel !== 'all' ? 'var(--text-inverse)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    <Filter className="w-4 h-4" />
+                    等级: {filters.hazardLevel === 'all' ? '全部' : getHazardLevelLabel(filters.hazardLevel as HazardLevel)}
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  {showLevelFilter && (
+                    <div className="absolute top-full left-0 mt-2 bg-bg-primary border border-border-primary rounded-lg shadow-xl z-20 min-w-[150px]">
+                      <div
+                        className="px-4 py-2 hover:bg-bg-secondary cursor-pointer text-sm"
+                        onClick={() => {
+                          setFilters({ ...filters, hazardLevel: 'all' });
+                          setShowLevelFilter(false);
+                        }}
+                      >
+                        全部等级
+                      </div>
+                      {(['minor', 'moderate', 'severe', 'critical'] as HazardLevel[]).map(level => (
+                        <div
+                          key={level}
+                          className="px-4 py-2 hover:bg-bg-secondary cursor-pointer text-sm flex items-center justify-between gap-2"
+                          onClick={() => {
+                            setFilters({ ...filters, hazardLevel: level });
+                            setShowLevelFilter(false);
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: config.legend[`${level}Color` as keyof typeof config.legend] as string }}
+                            />
+                            {getHazardLevelLabel(level)}
+                          </span>
+                          {filters.hazardLevel === level && <CheckCircle2 className="w-4 h-4 text-primary" />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowReporterFilter(!showReporterFilter);
+                      setShowAreaFilter(false);
+                      setShowLevelFilter(false);
+                    }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-bg-secondary"
+                    style={{
+                      background: filters.reporter !== 'all' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                      color: filters.reporter !== 'all' ? 'var(--text-inverse)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    <Users className="w-4 h-4" />
+                    上报人: {filters.reporter === 'all' ? '全部' : filters.reporter}
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  {showReporterFilter && (
+                    <div className="absolute top-full left-0 mt-2 bg-bg-primary border border-border-primary rounded-lg shadow-xl z-20 min-w-[150px]">
+                      <div
+                        className="px-4 py-2 hover:bg-bg-secondary cursor-pointer text-sm"
+                        onClick={() => {
+                          setFilters({ ...filters, reporter: 'all' });
+                          setShowReporterFilter(false);
+                        }}
+                      >
+                        全部上报人
+                      </div>
+                      {availableReporters.map(reporter => (
+                        <div
+                          key={reporter}
+                          className="px-4 py-2 hover:bg-bg-secondary cursor-pointer text-sm flex items-center justify-between"
+                          onClick={() => {
+                            setFilters({ ...filters, reporter });
+                            setShowReporterFilter(false);
+                          }}
+                        >
+                          {reporter}
+                          {filters.reporter === reporter && <CheckCircle2 className="w-4 h-4 text-primary" />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {hasActiveFilters && (
+                  <button
+                    onClick={resetFilters}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-bg-secondary"
+                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    重置筛选
+                  </button>
+                )}
+              </div>
+            </div>
+          </CardTitle>
+        </CardHeader>
+      </Card>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">

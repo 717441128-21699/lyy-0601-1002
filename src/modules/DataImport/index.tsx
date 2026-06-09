@@ -27,28 +27,44 @@ export const DataImportModule: React.FC = () => {
     resetImport,
     handleDragOver,
     handleDragLeave,
-    handleDrop,
   } = useFileImport();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importedData, setImportedData] = useState<Record<string, unknown>[]>([]);
 
+  const processFile = async (file: File) => {
+    try {
+      const result = await importFile(file, dataType);
+      if (result) {
+        setImportedData(result.validItems as Record<string, unknown>[]);
+      }
+    } catch (error) {
+      console.error('导入失败:', error);
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      try {
-        const result = await importFile(file, dataType);
-        if (result) {
-          setImportedData(result.data);
-        }
-      } catch (error) {
-        console.error('导入失败:', error);
-      }
+      processFile(file);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      processFile(files[0]);
     }
   };
 
   const handleConfirmImport = () => {
+    if (importedData.length === 0) {
+      alert('没有可导入的有效数据');
+      return;
+    }
     confirmImport(importedData, dataType);
+    alert(`成功导入 ${importedData.length} 条${dataType === 'pipes' ? '管段' : '隐患'}数据！请切换到${dataType === 'pipes' ? '管网地图' : '隐患清单'}或统计分析查看。`);
   };
 
   const stageLabels: Record<string, string> = {
@@ -347,7 +363,7 @@ export const DataImportModule: React.FC = () => {
               }}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, dataType)}
+              onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
             >
               <input

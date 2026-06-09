@@ -12,6 +12,8 @@ import {
   Upload,
   Maximize2,
   Link2,
+  Download,
+  Package,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -24,7 +26,7 @@ import type { Photo, PhotoCategory } from '@/types';
 import { mockAreas, mockInspectorNames } from '@/mock/data';
 
 export const PhotoWallModule: React.FC = () => {
-  const { photos, hazards, addPhoto, config } = useInspectionStore();
+  const { photos, hazards, pipes, valves, routes, inspectors, addPhoto, config } = useInspectionStore();
   const { themeColors } = useTheme();
 
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -120,6 +122,58 @@ export const PhotoWallModule: React.FC = () => {
       setSelectedFile(file);
       const base64 = await convertFileToBase64(file);
       setPreviewUrl(base64);
+    }
+  };
+
+  const handleExportReportPackage = async () => {
+    try {
+      const reportPackage = {
+        version: '1.0',
+        type: '智慧水务巡检汇报包',
+        exportedAt: new Date().toISOString(),
+        description: '离线巡检汇报数据包，包含照片、隐患、管段和统计数据',
+        data: {
+          pipes,
+          valves,
+          routes,
+          hazards,
+          photos,
+          inspectors,
+        },
+        statistics: {
+          totalPipes: pipes.length,
+          inspectedPipes: pipes.filter(p => p.status === 'inspected').length,
+          totalHazards: hazards.length,
+          resolvedHazards: hazards.filter(h => h.status === 'resolved').length,
+          totalPhotos: photos.length,
+          inspectionRate: pipes.length > 0
+            ? ((pipes.filter(p => p.status === 'inspected').length / pipes.length) * 100).toFixed(1) + '%'
+            : '0%',
+          resolveRate: hazards.length > 0
+            ? ((hazards.filter(h => h.status === 'resolved').length / hazards.length) * 100).toFixed(1) + '%'
+            : '0%',
+        },
+        config: {
+          theme: config.theme,
+          legend: config.legend,
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(reportPackage, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `智慧水务巡检汇报包_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      alert('离线汇报包导出成功！\n\n包含内容：\n- 照片（本地base64，断网可用）\n- 隐患清单\n- 管段数据\n- 阀门井数据\n- 巡检路线\n- 统计结果\n\n可在【参数设置】-【导入方案】中还原完整看板。');
+    } catch (error) {
+      alert('导出失败：' + (error as Error).message);
     }
   };
 
@@ -255,10 +309,16 @@ export const PhotoWallModule: React.FC = () => {
               <Image className="w-5 h-5" />
               照片墙
             </div>
-            <Button variant="primary" size="sm" onClick={() => setShowUploadModal(true)}>
-              <Upload className="w-4 h-4" />
-              上传照片
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={handleExportReportPackage}>
+                <Package className="w-4 h-4" />
+                导出离线汇报包
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setShowUploadModal(true)}>
+                <Upload className="w-4 h-4" />
+                上传照片
+              </Button>
+            </div>
           </CardTitle>
 
           <div className="flex items-center gap-3 mt-3 flex-wrap">

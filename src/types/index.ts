@@ -100,6 +100,8 @@ export interface Statistics {
     lastMonth: { inspections: number; hazards: number; distance: number };
   };
   trendData: { date: string; inspections: number; hazards: number }[];
+  availableAreas?: string[];
+  availableReporters?: string[];
 }
 
 export interface AppConfig {
